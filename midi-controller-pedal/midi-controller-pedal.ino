@@ -2,6 +2,12 @@
 #include <HCSR04.h>
 #include <EEPROM.h>
 
+// TODO:
+// - Add LEDs
+// - Add LCD
+// - Assign button pins
+// - Decide if expression pedal will get a channel change button (and LEDs)
+// - Calibrate exp pedal
 
 /*****************************************************/
 /*************** PROPOSED PEDAL LAYOUT ***************/
