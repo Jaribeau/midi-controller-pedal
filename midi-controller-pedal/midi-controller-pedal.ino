@@ -1,6 +1,10 @@
 #include "MIDIUSB.h"
 #include <HCSR04.h>
 #include <EEPROM.h>
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+#include <Adafruit_NeoPixel.h>
+
 
 // TODO:
 // - Add LEDs
@@ -8,6 +12,8 @@
 // - Assign button pins
 // - Decide if expression pedal will get a channel change button (and LEDs)
 // - Calibrate exp pedal
+// - Make ultrasonic sensor non-blocking (if necessary) https://www.instructables.com/id/Non-blocking-Ultrasonic-Sensor-for-Arduino/
+// - Explore sending info from Live to Pedal (https://julienbayle.studio/PythonLiveAPI_documentation/Live10.0.2.xml)
 
 /*****************************************************/
 /*************** PROPOSED PEDAL LAYOUT ***************/
@@ -41,6 +47,7 @@ int ULTRASONIC_TRIG_PIN = 14;
 int ULTRASONIC_ECHO_PIN = 16;
 UltraSonicDistanceSensor distanceSensor(ULTRASONIC_TRIG_PIN, ULTRASONIC_ECHO_PIN);
 
+LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 
 //
 // State variables
@@ -154,8 +161,15 @@ void setup() {
     pinMode(GEN_BTN_PINS[i], INPUT_PULLUP);
   }
 
+  // Setup LCD
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0,0);
+  lcd.print("Hello!");
+  lcd.setCursor(0,1);
+  lcd.print("Midi Pedal v0.1");
+  
   // TODO: Setup NeoPixel strip
-  // TODO: Setup I2C for LCD
 }
 
 
