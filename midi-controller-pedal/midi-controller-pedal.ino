@@ -19,13 +19,20 @@
 /*************** PROPOSED PEDAL LAYOUT ***************/
 /*****************************************************/
 /*
-   8 footswitches: general purpose buttons
-   1 footswitch: page toggle for general purpose buttons
-   1 expression/volume pedal
-   1 LCD readout
-   1 LED strip (10+ LEDS)
-   1 footswitch: expression pedal channel toggle?
-   3 knobs?
+   Pin Allocations
+   0    None (RX pin)
+   1    None (TX pin)
+   2    LCD Data
+   3    LCD Clock
+   4-9  Buttons 1-6
+   10   Button 7
+   16   Button 8
+   14   Button 9
+   15   Button 10
+   18   Ultrasonic Trig
+   19   Ultrasonic Echo
+   20   LEDs
+   21   
 */
 
 
@@ -42,9 +49,9 @@ int CONTROL_NUMBER[] = {0x0E,0x0F,0x10,0x11,
                         0x16,0x17,0x18,0x19,
                         0x1A,0x1B,0x1C,0x1D}; // Must be at least NUM_GEN_BTNS * NUM_PAGES
 
-int LEDS_CONTROL_PIN = 15;
+int LEDS_CONTROL_PIN = 18;
 int ULTRASONIC_TRIG_PIN = 14;
-int ULTRASONIC_ECHO_PIN = 16;
+int ULTRASONIC_ECHO_PIN = 15;
 UltraSonicDistanceSensor distanceSensor(ULTRASONIC_TRIG_PIN, ULTRASONIC_ECHO_PIN);
 
 LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
@@ -129,6 +136,8 @@ void switchBtnMode(int button){
     EEPROM.write(btn_mode_addr[button + (NUM_GEN_BTNS * current_page)], 1); 
 
 
+  lcd.setCursor(0,1);
+  lcd.print("                ");
   lcd.setCursor(0,1);
   lcd.print("B");
   lcd.print(button);
@@ -279,8 +288,13 @@ void loop() {
     double prev_distance = rolling_distance_avg;
     rolling_distance_avg = (rolling_distance_avg * EXP_PEDAL_SMOOTHING + distance) / (EXP_PEDAL_SMOOTHING + 1); 
     
-    if(rolling_distance_avg != prev_distance)
+    if(rolling_distance_avg != prev_distance){
       controlChange(0, 0x0B, rolling_distance_avg*10);
+      lcd.setCursor(15-4,1);
+      lcd.print("xp");
+      lcd.print((int)(rolling_distance_avg*10));
+      lcd.print("  ");
+      }
   }
 
 
