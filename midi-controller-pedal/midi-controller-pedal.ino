@@ -111,12 +111,12 @@ void messageReceivedCallback(byte channel, byte pitch, byte velocity)
 
 void switchBtnMode(int button){
   if(isBtnInToggleMode(button))
-    EEPROM.write(btn_mode_addr[button], 0); 
+    EEPROM.write(btn_mode_addr[button + (NUM_GEN_BTNS * current_page)], 0); 
   else
-    EEPROM.write(btn_mode_addr[button], 1); 
+    EEPROM.write(btn_mode_addr[button + (NUM_GEN_BTNS * current_page)], 1); 
 
-  Serial.print("Btn:");
-  Serial.print(button);
+  Serial.print("BtnAddr:");
+  Serial.print(button + (NUM_GEN_BTNS * current_page));
   Serial.print(" TMode:");
   Serial.println(isBtnInToggleMode(button));
 }
@@ -124,7 +124,7 @@ void switchBtnMode(int button){
 
 
 bool isBtnInToggleMode(int button){
-  return EEPROM.read(btn_mode_addr[button]);
+  return EEPROM.read(btn_mode_addr[button + (NUM_GEN_BTNS * current_page)]);
 }
 
 
