@@ -56,7 +56,7 @@ bool btn_states[] = {0, 0, 0, 0, 0, 0, 0, 0};
 bool toggle_btn_states[] = {0, 0, 0, 0, 0, 0, 0, 0};
 long btn_last_change_times[] = {0, 0, 0, 0, 0, 0, 0, 0};
 long btn_long_hold_start_times[] = {0, 0, 0, 0, 0, 0, 0, 0};
-bool btn_page_up_state = 0;
+bool btn_page_up_state = 1;
 long btn_page_up_last_change_time = 0;
 long last_pedal_read_time = 0;
 int current_page = 0; // Channel used corresponds to current page
@@ -128,10 +128,22 @@ void switchBtnMode(int button){
   else
     EEPROM.write(btn_mode_addr[button + (NUM_GEN_BTNS * current_page)], 1); 
 
-  Serial.print("BtnAddr:");
-  Serial.print(button + (NUM_GEN_BTNS * current_page));
-  Serial.print(" TMode:");
-  Serial.println(isBtnInToggleMode(button));
+
+  lcd.setCursor(0,1);
+  lcd.print("B");
+  lcd.print(button);
+  if(isBtnInToggleMode(button))
+    lcd.print(" mode: togg");
+  else
+    lcd.print(" mode: moment");
+  delay(2000);
+  lcd.setCursor(0,1);
+  lcd.print("                ");
+  
+//  Serial.print("BtnAddr:");
+//  Serial.print(button + (NUM_GEN_BTNS * current_page));
+//  Serial.print(" TMode:");
+//  Serial.println(isBtnInToggleMode(button));
 }
 
 
@@ -168,6 +180,11 @@ void setup() {
   lcd.print("Hello!");
   lcd.setCursor(0,1);
   lcd.print("Midi Pedal v0.1");
+  delay(2000);
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("PAGE ");
+  lcd.print(current_page);
   
   // TODO: Setup NeoPixel strip
 }
@@ -206,20 +223,23 @@ void loop() {
       // Publish Midi message
       if(!isBtnInToggleMode(btn)){
         controlChange(current_page, CONTROL_NUMBER[current_page*NUM_GEN_BTNS + btn], (int)(!btn_states[btn])*127); // Control change on or off
-        //Print button state
-        Serial.print("Btn");
-        Serial.print(btn);
-        Serial.print(":");
-        Serial.println(!btn_states[btn]);
+        
+        lcd.setCursor(0,1);
+        lcd.print("BTN ");
+        lcd.print(btn);
+        lcd.print("|");
+        lcd.print(!btn_states[btn]);
       }
       else if(isBtnInToggleMode(btn) && !btn_states[btn]){
         // Flip toggle only on falling edge
         toggle_btn_states[btn] = !toggle_btn_states[btn];
         controlChange(current_page, CONTROL_NUMBER[current_page*NUM_GEN_BTNS + btn], (int)toggle_btn_states[btn]*127);
-        Serial.print("TBtn");
-        Serial.print(btn);
-        Serial.print(":");
-        Serial.println(!toggle_btn_states[btn]);
+        
+        lcd.setCursor(0,1);
+        lcd.print("tBTN");
+        lcd.print(btn);
+        lcd.print("|");
+        lcd.print(!toggle_btn_states[btn]);
       }
     } 
   }
@@ -239,8 +259,13 @@ void loop() {
       if(current_page >= NUM_PAGES){
         current_page = 0;
       }
-      Serial.print("Pg:");
-      Serial.println(current_page);
+
+      // Update LCD Page Number
+      lcd.setCursor(0,0);
+      lcd.print("PAGE ");
+      lcd.print(current_page);
+      lcd.setCursor(0,1);
+      lcd.print("                ");
     }
   }
   
