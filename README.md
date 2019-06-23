@@ -4,8 +4,8 @@ A custom MIDI controller pedalboard to control a DAW, for fun!
 ## Planned pedal layout
 * 8 footswitches: general purpose buttons
 * 1 footswitch: page toggle for general purpose buttons
-* 1 expression/volume pedal
-* 1 LCD readout (show page number and other messages)
+* 1 footswitch: mode change (set LEDs, set toggle/momentary, save preset?)
+* 1 LCD readout (show page number, mode)
 * 1 LED strip (10+ LEDS)
 * 1 footswitch: expression pedal channel toggle (?)
 * 3 general purpose knobs (?)

@@ -7,13 +7,14 @@
 
 
 // TODO:
+// - Buy cardboard and test it out
 // - Add LEDs
-// - Add LCD
-// - Assign button pins
-// - Decide if expression pedal will get a channel change button (and LEDs)
+// - Plan config interaction (mode selection, setting LEDs, setting toggle/momentary, saving presets)
 // - Calibrate exp pedal
 // - Make ultrasonic sensor non-blocking (if necessary) https://www.instructables.com/id/Non-blocking-Ultrasonic-Sensor-for-Arduino/
+// - Expression pedal interface (page changes channel, LEDs inditicate direction to setpoint, changes apply after hitting setpoint)
 // - Explore sending info from Live to Pedal (https://julienbayle.studio/PythonLiveAPI_documentation/Live10.0.2.xml)
+// - Saving presets (preset mode, new, delete, save, load, name)
 
 /*****************************************************/
 /*************** PROPOSED PEDAL LAYOUT ***************/
@@ -43,7 +44,8 @@
 // Pin assignments
 //
 int BTN_PAGE_UP_PIN = 8;
-int GEN_BTN_PINS[] = {6, 7, 9, 2, 3, 4, 5};
+int BTN_MODE_PIN = 16;
+int GEN_BTN_PINS[] = {4, 5, 6, 7, 9, 15, 14, 10};
 int CONTROL_NUMBER[] = {0x0E,0x0F,0x10,0x11,
                         0x12,0x13,0x14,0x15,
                         0x16,0x17,0x18,0x19,
@@ -73,7 +75,7 @@ double rolling_distance_avg = 0;
 //
 // Constants
 //
-const int NUM_GEN_BTNS = 2;
+const int NUM_GEN_BTNS = 8;
 const int NUM_PAGES = 2;
 const long DEBOUNCE_DELAY = 50;
 const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
@@ -283,19 +285,19 @@ void loop() {
   // EXPRESSION PEDAL
   ///////////////////
   // Every 500 miliseconds, do a measurement using the sensor and print the distance in centimeters.
-  if(millis() - last_pedal_read_time > PEDAL_DELAY){
-    double distance = distanceSensor.measureDistanceCm();
-    double prev_distance = rolling_distance_avg;
-    rolling_distance_avg = (rolling_distance_avg * EXP_PEDAL_SMOOTHING + distance) / (EXP_PEDAL_SMOOTHING + 1); 
-    
-    if(rolling_distance_avg != prev_distance){
-      controlChange(0, 0x0B, rolling_distance_avg*10);
-      lcd.setCursor(15-4,1);
-      lcd.print("xp");
-      lcd.print((int)(rolling_distance_avg*10));
-      lcd.print("  ");
-      }
-  }
+//  if(millis() - last_pedal_read_time > PEDAL_DELAY){
+//    double distance = distanceSensor.measureDistanceCm();
+//    double prev_distance = rolling_distance_avg;
+//    rolling_distance_avg = (rolling_distance_avg * EXP_PEDAL_SMOOTHING + distance) / (EXP_PEDAL_SMOOTHING + 1); 
+//    
+//    if(rolling_distance_avg != prev_distance){
+//      controlChange(0, 0x0B, rolling_distance_avg*10);
+//      lcd.setCursor(15-4,1);
+//      lcd.print("xp");
+//      lcd.print((int)(rolling_distance_avg*10));
+//      lcd.print("  ");
+//      }
+//  }
 
 
 }
