@@ -9,6 +9,47 @@
 
 
 // TODO:
+// Refactor to use buttonPress(), buttonRelease(), rollerChange() (only write debouncing once in the DI loop).
+// Add switch statement in buttonPress() that calls genBtnPress(), pageUp/DownPressed(), modePressed()
+
+// LED config mode:
+  // changeMode(LED_CONFIG_MODE)
+  // "Select Button" 
+  // "Blink gen buttons"
+  // btnPress()
+      // setSelectedPin()
+      // changeMode(LED_CONFIG_MODE)
+
+// Colour Chooser Mode
+  // changeMode(COLOUR_CHOOSER_MODE)
+      // black out all buttons except one being set
+      // cancel button?
+  // rollerChange() 
+      // Change the colour shown on that button
+  // btnPress()
+      // setPinColour(button)
+      // changeMode(LED_CONFIG_MODE)
+
+// MIDI Mode
+  // changeMode(MIDI_MODE)
+  // btnPress()
+      // sendMIDI()
+      // IF togg: toggleLED()
+      // IF momentary: LED on until buttonRelease()
+  // rollerChange()
+      // Update roller state
+      // sendMIDI() 
+      // setLed / screen #
+      // OR scrollMouse()
+
+// Pushbutton Config Mode
+  // changeMode(PUSHBUTTON_CONFIG_MODE)
+  // btnPress()
+      // switchToggleMode()
+      // blinkLED()
+      // "BTN X mode: Togg / Momentary"
+
+
 // - Add LEDs
 // - Plan config interaction (mode selection, setting LEDs, setting toggle/momentary, saving presets)
 // - Expression pedal interface (page changes channel, LEDs inditicate direction to setpoint, changes apply after hitting setpoint)
@@ -42,6 +83,7 @@
 //
 // Pin assignments
 //
+// int LEDS_CONTROL_PIN = 18;
 int BTN_PAGE_UP_PIN = 8;
 int BTN_MODE_PIN = 16;
 int EXP_PEDAL_PIN = A0;
@@ -50,8 +92,6 @@ int CONTROL_NUMBER[] = {0x0E,0x0F,0x10,0x11,
                         0x12,0x13,0x14,0x15,
                         0x16,0x17,0x18,0x19,
                         0x1A,0x1B,0x1C,0x1D}; // Must be at least NUM_GEN_BTNS * NUM_PAGES
-
-int LEDS_CONTROL_PIN = 18;
 
 LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 
@@ -67,6 +107,16 @@ long btn_page_up_last_change_time = 0;
 int current_page = 0; // Channel used corresponds to current page
 int exp_pedal_in = 0;
 int prev_exp_pedal_in = 0;
+
+// LED strip
+#define LED_PIN     18
+#define LED_COUNT   20
+// Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN);
+
+uint32_t GREENISHWHITE = strip.Color(0, 64, 0, 64);
+uint32_t BLACK = strip.Color(0, 0, 0, 0);
+
 
 //Mouse
 int prev_scroller_in = 0;
@@ -86,6 +136,7 @@ const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch
 // EEPROM (nonvolatile) settings
 //
 int btn_mode_addr[NUM_GEN_BTNS * NUM_PAGES];
+int btn_colour_addr[NUM_GEN_BTNS * NUM_PAGES];
 
 
 
@@ -137,6 +188,8 @@ void switchBtnMode(int button){
   else
     EEPROM.write(btn_mode_addr[button + (NUM_GEN_BTNS * current_page)], 1); 
 
+  // Indicate 
+  blinkLED(button + (NUM_GEN_BTNS * current_page));
 
   lcd.setCursor(0,1);
   lcd.print("                ");
@@ -155,6 +208,46 @@ void switchBtnMode(int button){
 //  Serial.print(button + (NUM_GEN_BTNS * current_page));
 //  Serial.print(" TMode:");
 //  Serial.println(isBtnInToggleMode(button));
+}
+
+
+void blinkLED(int led){
+  strip.setPixelColor(led, buttonColour(button));
+  delay(100);
+  strip.setPixelColor(led, BLACK);
+  delay(100);
+  strip.setPixelColor(led, buttonColour(button));
+  delay(100);
+  strip.setPixelColor(led, BLACK);
+  delay(100);
+  strip.setPixelColor(led, buttonColour(button));
+  delay(100);
+  strip.setPixelColor(led, BLACK);
+  delay(100);
+  strip.setPixelColor(led, buttonColour(button));
+}
+
+
+
+void changeButtonColour(int button, int colour){
+  EEPROM.write(btn_colour_addr[button + (NUM_GEN_BTNS * current_page)], colour);
+
+  // Print colour changed
+  lcd.setCursor(0,1);
+  lcd.print("                ");
+  lcd.setCursor(0,1);
+  lcd.print("B");
+  lcd.print(button);
+  lcd.print(" colour changed.")
+  delay(2000);
+  lcd.setCursor(0,1);
+  lcd.print("                ");
+}
+
+
+
+bool buttonColour(int button){
+  return EEPROM.read(btn_colour_addr[button + (NUM_GEN_BTNS * current_page)]);
 }
 
 
@@ -197,7 +290,9 @@ void setup() {
   lcd.print("PAGE ");
   lcd.print(current_page);
   
-  // TODO: Setup NeoPixel strip
+  // Setup NeoPixel strip
+  strip.begin();
+  strip.show(); // Initialize all pixels to 'off'
 
   // Setup Mouse Scroll Control
   Mouse.begin();
