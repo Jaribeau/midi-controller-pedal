@@ -4,14 +4,13 @@
 #include <Wire.h> 
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
+#include <Mouse.h>
+
 
 
 // TODO:
-// - Buy cardboard and test it out
 // - Add LEDs
 // - Plan config interaction (mode selection, setting LEDs, setting toggle/momentary, saving presets)
-// - Calibrate exp pedal
-// - Make ultrasonic sensor non-blocking (if necessary) https://www.instructables.com/id/Non-blocking-Ultrasonic-Sensor-for-Arduino/
 // - Expression pedal interface (page changes channel, LEDs inditicate direction to setpoint, changes apply after hitting setpoint)
 // - Explore sending info from Live to Pedal (https://julienbayle.studio/PythonLiveAPI_documentation/Live10.0.2.xml)
 // - Saving presets (preset mode, new, delete, save, load, name)
@@ -30,8 +29,8 @@
    16   Button 8
    14   Button 9
    15   Button 10
-   18   Ultrasonic Trig
-   19   Ultrasonic Echo
+   18   Expression Pedal Analog In
+   19   
    20   LEDs
    21   
 */
@@ -45,6 +44,7 @@
 //
 int BTN_PAGE_UP_PIN = 8;
 int BTN_MODE_PIN = 16;
+int EXP_PEDAL_PIN = A0;
 int GEN_BTN_PINS[] = {4, 5, 6, 7, 9, 15, 14, 10};
 int CONTROL_NUMBER[] = {0x0E,0x0F,0x10,0x11,
                         0x12,0x13,0x14,0x15,
@@ -52,9 +52,6 @@ int CONTROL_NUMBER[] = {0x0E,0x0F,0x10,0x11,
                         0x1A,0x1B,0x1C,0x1D}; // Must be at least NUM_GEN_BTNS * NUM_PAGES
 
 int LEDS_CONTROL_PIN = 18;
-int ULTRASONIC_TRIG_PIN = 14;
-int ULTRASONIC_ECHO_PIN = 15;
-UltraSonicDistanceSensor distanceSensor(ULTRASONIC_TRIG_PIN, ULTRASONIC_ECHO_PIN);
 
 LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 
@@ -67,20 +64,23 @@ long btn_last_change_times[] = {0, 0, 0, 0, 0, 0, 0, 0};
 long btn_long_hold_start_times[] = {0, 0, 0, 0, 0, 0, 0, 0};
 bool btn_page_up_state = 1;
 long btn_page_up_last_change_time = 0;
-long last_pedal_read_time = 0;
 int current_page = 0; // Channel used corresponds to current page
-double rolling_distance_avg = 0;
+int exp_pedal_in = 0;
+int prev_exp_pedal_in = 0;
+
+//Mouse
+int prev_scroller_in = 0;
+long mouse_delay_timer = 0;
+long mouse_delay = 100;
 
 
 //
 // Constants
 //
 const int NUM_GEN_BTNS = 8;
-const int NUM_PAGES = 2;
+const int NUM_PAGES = 3;
 const long DEBOUNCE_DELAY = 50;
 const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
-const double EXP_PEDAL_SMOOTHING = 20;
-const long PEDAL_DELAY = 100;
 
 //
 // EEPROM (nonvolatile) settings
@@ -198,6 +198,9 @@ void setup() {
   lcd.print(current_page);
   
   // TODO: Setup NeoPixel strip
+
+  // Setup Mouse Scroll Control
+  Mouse.begin();
 }
 
 
@@ -284,20 +287,23 @@ void loop() {
   ///////////////////
   // EXPRESSION PEDAL
   ///////////////////
-  // Every 500 miliseconds, do a measurement using the sensor and print the distance in centimeters.
-//  if(millis() - last_pedal_read_time > PEDAL_DELAY){
-//    double distance = distanceSensor.measureDistanceCm();
-//    double prev_distance = rolling_distance_avg;
-//    rolling_distance_avg = (rolling_distance_avg * EXP_PEDAL_SMOOTHING + distance) / (EXP_PEDAL_SMOOTHING + 1); 
-//    
-//    if(rolling_distance_avg != prev_distance){
-//      controlChange(0, 0x0B, rolling_distance_avg*10);
-//      lcd.setCursor(15-4,1);
-//      lcd.print("xp");
-//      lcd.print((int)(rolling_distance_avg*10));
-//      lcd.print("  ");
-//      }
-//  }
+  exp_pedal_in = analogRead(EXP_PEDAL_PIN);
+  if(exp_pedal_in != prev_exp_pedal_in && current_page != 2){
+    controlChange(0, 0x0B, exp_pedal_in/4);
+    lcd.setCursor(15-4,1);
+    lcd.print("xp");
+    lcd.print(exp_pedal_in/4 *100/255);
+    if(exp_pedal_in/4*100/255 < 100) {lcd.print(" ");}
+    prev_exp_pedal_in = exp_pedal_in;
+  }
 
 
+  ///////////////////
+  // MOUSE SCROLL WHEEL
+  ///////////////////
+  if(millis() - mouse_delay_timer > mouse_delay && current_page == 2){
+    mouse_delay_timer = millis();
+    Mouse.move(0,0, -(char)(prev_scroller_in - exp_pedal_in/8));
+    prev_scroller_in = exp_pedal_in/8;
+  }
 }
