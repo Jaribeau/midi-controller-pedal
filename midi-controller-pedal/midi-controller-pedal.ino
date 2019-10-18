@@ -1,3 +1,19 @@
+#ifdef DEBUG
+ #define DEBUG_PRINT(x) Serial.println(x)
+#else
+ #define DEBUG_PRINT(x)
+#endif
+
+// #define NO_LCD
+
+#ifdef NO_LCD
+  #define printToScreen(x)  Serial.println(x)
+#else
+  #define printToScreen(x)  lcd.print(x)
+  // #define lcd.print(x) Serial.print(x)
+  // #define lcd.setCursor(x,x) Serial.println();
+#endif
+
 #include "MIDIUSB.h"
 #include <HCSR04.h>
 #include <EEPROM.h>
@@ -5,7 +21,6 @@
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
 #include <Mouse.h>
-
 
 
 // TODO:
@@ -46,11 +61,10 @@
   // changeMode(PUSHBUTTON_CONFIG_MODE)
   // btnPress()
       // switchToggleMode()
-      // blinkLED()
+      // blinkButton()
       // "BTN X mode: Togg / Momentary"
 
 
-// - Add LEDs
 // - Plan config interaction (mode selection, setting LEDs, setting toggle/momentary, saving presets)
 // - Expression pedal interface (page changes channel, LEDs inditicate direction to setpoint, changes apply after hitting setpoint)
 // - Explore sending info from Live to Pedal (https://julienbayle.studio/PythonLiveAPI_documentation/Live10.0.2.xml)
@@ -76,47 +90,77 @@
    21   
 */
 
-
 //IDEA: page N = toggle/momentary config page, LEDs on each button color to indicate mode?
 
+/*****************************************************/
+/***************      CONSTANTS       ***************/
+/*****************************************************/
+const int NUM_GEN_BTNS = 7;
+const int NUM_PAGES = 3;
+const long DEBOUNCE_DELAY = 50;
 
-//
-// Pin assignments
-//
-// int LEDS_CONTROL_PIN = 18;
-int BTN_PAGE_UP_PIN = 8;
-int BTN_MODE_PIN = 16;
+const int MIDI_MODE = 0;
+const int LED_CONFIG_MODE = 1;
+const int COLOUR_CHOOSER_MODE = 2;
+const int PUSHBUTTON_CONFIG_MODE = 3;
+// const int PAGE_NAMING_MODE = 0;
+
+int MIDI_CONTROL_NUMBERS[] = {0x0E,0x0F,0x10,0x11,
+                              0x12,0x13,0x14,0x15,
+                              0x16,0x17,0x18,0x19,
+                              0x1A,0x1B,0x1C,0x1D}; // Must be enough numbers to equal NUM_GEN_BTNS * NUM_PAGES
+
+const bool ON = 1;
+const bool OFF = 0;
+
+const int LED_COUNT = 18;
+const int NUM_BTNS_WITH_LEDS = 11;
+const int NUM_LEDS_PER_BUTTON = 1;
+const int NUM_LEDS_BTWEEN_BUTTONS = 0;
+
+
+/*****************************************************/
+/***************    PIN ASSIGNMENTS    ***************/
+/*****************************************************/
+// Button/Pin Map
+//    4   5   6   7   8
+//    9   15  14  10  16
+// Led Index Map
+//    0   1   2   3   4
+//    11  10  9   8   7
+int BTN_PAGE_UP_PIN = 4;
+int BTN_PAGE_DOWN_PIN = 9;
+int BTN_MODE_PIN = 8;
+int GEN_BTN_PINS[] =    {5, 6, 7, 15, 14, 10, 16};
+// Button oder: Gen buttons, page Up, page Down, mode, roller
+int BTN_LED_INDEXES[] = {1, 2, 3, 10, 9, 8, 7, 0, 11, 4, 17};
 int EXP_PEDAL_PIN = A0;
-int GEN_BTN_PINS[] = {4, 5, 6, 7, 9, 15, 14, 10};
-int CONTROL_NUMBER[] = {0x0E,0x0F,0x10,0x11,
-                        0x12,0x13,0x14,0x15,
-                        0x16,0x17,0x18,0x19,
-                        0x1A,0x1B,0x1C,0x1D}; // Must be at least NUM_GEN_BTNS * NUM_PAGES
+int LED_PIN = 19;
 
-LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+/*****************************************************/
+/***************    STATE VARIABLES    ***************/
+/*****************************************************/
+bool btn_states[NUM_GEN_BTNS * NUM_PAGES];
+bool toggle_btn_states[NUM_GEN_BTNS * NUM_PAGES];
+bool btn_toggle_modes[NUM_GEN_BTNS * NUM_PAGES];
+bool btn_colours[NUM_BTNS_WITH_LEDS * NUM_PAGES];
 
-//
-// State variables
-//
-bool btn_states[] = {0, 0, 0, 0, 0, 0, 0, 0};
-bool toggle_btn_states[] = {0, 0, 0, 0, 0, 0, 0, 0};
-long btn_last_change_times[] = {0, 0, 0, 0, 0, 0, 0, 0};
-long btn_long_hold_start_times[] = {0, 0, 0, 0, 0, 0, 0, 0};
-bool btn_page_up_state = 1;
+long btn_last_change_times[] = {0, 0, 0, 0, 0, 0, 0};
+long btn_long_hold_start_times[] = {0, 0, 0, 0, 0, 0, 0};
+
+bool btn_page_up_state = 0;
 long btn_page_up_last_change_time = 0;
-int current_page = 0; // Channel used corresponds to current page
+bool btn_page_down_state = 0;
+long btn_page_down_last_change_time = 0;
+bool btn_mode_state = 0;
+long btn_mode_last_change_time = 0;
+int current_page = 1; // Midi channel used corresponds to current page. This ranges from 1 to NUM_PAGES.
+int current_mode = 0;
+
 int exp_pedal_in = 0;
 int prev_exp_pedal_in = 0;
 
-// LED strip
-#define LED_PIN     18
-#define LED_COUNT   20
-// Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
-Adafruit_NeoPixel strip(LED_COUNT, LED_PIN);
-
-uint32_t GREENISHWHITE = strip.Color(0, 64, 0, 64);
-uint32_t BLACK = strip.Color(0, 0, 0, 0);
-
+int selected_button = 0;
 
 //Mouse
 int prev_scroller_in = 0;
@@ -124,22 +168,38 @@ long mouse_delay_timer = 0;
 long mouse_delay = 100;
 
 
-//
-// Constants
-//
-const int NUM_GEN_BTNS = 8;
-const int NUM_PAGES = 3;
-const long DEBOUNCE_DELAY = 50;
-const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
+// LED Setup
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN);
+LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+
+uint32_t GREENISHWHITE = strip.Color(0, 64, 0, 64);
+uint32_t RED = strip.Color(64, 0, 0, 0);
+uint32_t GREEN = strip.Color(0, 64, 0, 0);
+uint32_t BLUE = strip.Color(0, 0, 64, 0);
+uint32_t WHITE = strip.Color(0, 0, 0, 64);
+uint32_t BLACK = strip.Color(0, 0, 0, 0);
+uint32_t COLOUR_CHOOSER_COLOURS[] = {GREENISHWHITE,
+                                  RED,
+                                  GREEN,
+                                  BLUE,
+                                  WHITE};
+int NUM_COLOUR_OPTIONS = 5;
+int currentColourChooserIndex = 0;
+int brightness = 125; //0 - 255
 
 //
 // EEPROM (nonvolatile) settings
 //
 int btn_mode_addr[NUM_GEN_BTNS * NUM_PAGES];
-int btn_colour_addr[NUM_GEN_BTNS * NUM_PAGES];
+int btn_colour_addr[NUM_BTNS_WITH_LEDS * NUM_PAGES];
+int btn_tog_state_addr[NUM_GEN_BTNS * NUM_PAGES];
 
 
 
+
+/*****************************************************/
+/***************    MIDI FUNCTIONS    ***************/
+/*****************************************************/
 // First parameter is the event type (0x09 = note on, 0x08 = note off).
 // Second parameter is note-on/note-off, combined with the channel.
 // Channel: 0-15 (1-16 in live)
@@ -152,7 +212,6 @@ void noteOn(byte channel, byte pitch, byte velocity) {
 }
 
 
-
 void noteOff(byte channel, byte pitch, byte velocity) {
   midiEventPacket_t noteOff = {0x08, 0x80 | channel, pitch, velocity};
   MidiUSB.sendMIDI(noteOff);
@@ -160,8 +219,6 @@ void noteOff(byte channel, byte pitch, byte velocity) {
 }
 
 
-
-// CONTROL CHANGE
 // First parameter is the event type (0x0B = control change).
 // Second parameter is the event type, combined with the channel.
 // Third parameter is the control number number (0-119).
@@ -173,7 +230,6 @@ void controlChange(byte channel, byte control, byte value) {
 }
 
 
-
 void messageReceivedCallback(byte channel, byte pitch, byte velocity)
 {
   // Do some stuff with NoteOn here
@@ -182,97 +238,443 @@ void messageReceivedCallback(byte channel, byte pitch, byte velocity)
 
 
 
+
+/*****************************************************/
+/***************    CONFIG FUNCTIONS    ***************/
+/*****************************************************/
 void switchBtnMode(int button){
-  if(isBtnInToggleMode(button))
-    EEPROM.write(btn_mode_addr[button + (NUM_GEN_BTNS * current_page)], 0); 
-  else
-    EEPROM.write(btn_mode_addr[button + (NUM_GEN_BTNS * current_page)], 1); 
+  btn_toggle_modes[button + (NUM_GEN_BTNS * current_page)] = !isBtnInToggleMode(button);
+  EEPROM.write(btn_mode_addr[button + (NUM_GEN_BTNS * current_page)], isBtnInToggleMode(button)); 
 
   // Indicate 
-  blinkLED(button + (NUM_GEN_BTNS * current_page));
+  blinkButton(button + (NUM_GEN_BTNS * current_page), 3);
 
   lcd.setCursor(0,1);
-  lcd.print("                ");
-  lcd.setCursor(0,1);
-  lcd.print("B");
-  lcd.print(button);
+  printToScreen("B");
+  printToScreen(button);
   if(isBtnInToggleMode(button))
-    lcd.print(" mode: togg");
+    printToScreen(": toggle      ");
   else
-    lcd.print(" mode: moment");
-  delay(2000);
+    printToScreen(": momentary   ");
+  delay(1000);
   lcd.setCursor(0,1);
-  lcd.print("                ");
-  
-//  Serial.print("BtnAddr:");
-//  Serial.print(button + (NUM_GEN_BTNS * current_page));
-//  Serial.print(" TMode:");
-//  Serial.println(isBtnInToggleMode(button));
+  printToScreen("                ");
 }
 
+int getToggBtnState(int button){
+  return toggle_btn_states[current_page*NUM_GEN_BTNS + button];
+}
 
-void blinkLED(int led){
-  strip.setPixelColor(led, buttonColour(button));
-  delay(100);
-  strip.setPixelColor(led, BLACK);
-  delay(100);
-  strip.setPixelColor(led, buttonColour(button));
-  delay(100);
-  strip.setPixelColor(led, BLACK);
-  delay(100);
-  strip.setPixelColor(led, buttonColour(button));
-  delay(100);
-  strip.setPixelColor(led, BLACK);
-  delay(100);
-  strip.setPixelColor(led, buttonColour(button));
+int getBtnState(int button){
+  return btn_states[current_page*NUM_GEN_BTNS + button];
+}
+
+void setToggBtnState(int button, bool state){
+  toggle_btn_states[current_page*NUM_GEN_BTNS + button] = state;
+  EEPROM.write(btn_tog_state_addr[button + (NUM_GEN_BTNS * current_page)], getToggBtnState(button));
+}
+
+void setBtnState(int button, bool state){
+  btn_states[current_page*NUM_GEN_BTNS + button] = state;
 }
 
 
 
-void changeButtonColour(int button, int colour){
-  EEPROM.write(btn_colour_addr[button + (NUM_GEN_BTNS * current_page)], colour);
+/*******************************************************/
+/***************    HELPER FUNCTIONS    ***************/
+/*******************************************************/
 
+void setBtnLEDs(int btn, uint32_t colour){
+  // Button oder: Gen buttons, page Up, page Down, mode, roller
+  strip.setPixelColor(BTN_LED_INDEXES[btn], colour);
+}
+
+void blinkButton(int btn, int numFlashes){
+  uint32_t colour = getButtonColour(btn);
+  for(int x = 0; x < numFlashes; x++){
+    setBtnLEDs(btn, colour);
+    delay(100);
+    setBtnLEDs(btn, BLACK);
+    delay(100);
+  }
+  setBtnLEDs(btn, colour);
+}
+
+void refreshLEDs(){
+  // TODO set roller LED
+  setBtnLEDs(7, RED); // Page Up
+  setBtnLEDs(8, RED); // Page Down
+  setBtnLEDs(9, RED); // Mode
+  setBtnLEDs(10, RED); // Roller
+
+  switch (current_mode) {
+    case MIDI_MODE:
+      for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
+        if(isBtnInToggleMode(btn) && getToggBtnState(btn)){
+          setBtnLEDs(btn, getButtonColour(btn));
+        }
+        else if(isBtnInToggleMode(btn) && !getToggBtnState(btn)){
+          setBtnLEDs(btn, BLACK);
+        }
+        else if(!isBtnInToggleMode(btn) && !getBtnState(btn)){
+          setBtnLEDs(btn, getButtonColour(btn));
+        }
+        else if(!isBtnInToggleMode(btn) && getBtnState(btn)){
+          setBtnLEDs(btn, BLACK);
+        }
+      }
+      break;
+      
+    case LED_CONFIG_MODE:
+      for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
+        setBtnLEDs(btn, getButtonColour(btn));
+      }
+      break;
+
+    case COLOUR_CHOOSER_MODE:
+      for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
+        if(selected_button != btn)
+          setBtnLEDs(btn, BLACK);
+      }
+      setBtnLEDs(selected_button, COLOUR_CHOOSER_COLOURS[currentColourChooserIndex]);
+      break;
+
+    case PUSHBUTTON_CONFIG_MODE:
+      for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
+        setBtnLEDs(btn, getButtonColour(btn));
+      }
+      break;
+  }
+  strip.show();
+}
+
+void refreshLCD(){
+  switch (current_mode) {
+    case MIDI_MODE:
+      lcd.setCursor(0,0);
+      printToScreen("PG ");
+      printToScreen(current_page);
+      printToScreen("            ");
+      lcd.setCursor(0,1);
+      printToScreen("                ");
+      break;
+
+    case LED_CONFIG_MODE:
+      lcd.setCursor(0,0);
+      printToScreen("PG ");
+      printToScreen(current_page);
+      printToScreen(" - SET LEDs");
+      lcd.setCursor(0,1);
+      printToScreen("Stomp to select.");
+      break;
+
+    case COLOUR_CHOOSER_MODE:
+      lcd.setCursor(0,0);
+      printToScreen("Roll for colours..");
+      printToScreen(current_page);
+      printToScreen("          ");
+      lcd.setCursor(0,1);
+      printToScreen("Stomp to select.");
+      break;
+
+    case PUSHBUTTON_CONFIG_MODE:
+      lcd.setCursor(0,0);
+      printToScreen("PG ");
+      printToScreen(current_page);
+      printToScreen(" - SET TOGL");
+      lcd.setCursor(0,1);
+      printToScreen("Stomp to set.");
+      break;
+  }
+}
+
+
+void changeMode(int mode){
+  // Mode to handle gracefully switching between modes (basically setting LEDs probably)
+  current_mode = mode;
+
+  // TODO: determine if any of this is needed
+  switch (mode) {
+    case MIDI_MODE:
+      lcd.setCursor(0,0);
+      printToScreen("Midi Mode");
+      break;
+
+    case LED_CONFIG_MODE:
+      lcd.setCursor(0,0);
+      printToScreen("LED Config Mode");
+      break;
+
+    case COLOUR_CHOOSER_MODE:
+      lcd.setCursor(0,0);
+      printToScreen("Colour Chooser Mode");
+      break;
+
+    case PUSHBUTTON_CONFIG_MODE:
+      lcd.setCursor(0,0);
+      printToScreen("Pushbutton Config Mode");
+      break;
+
+    default:
+      current_mode = 0;
+      break;
+  }
+}
+
+int getButtonColour(int button){
+  return COLOUR_CHOOSER_COLOURS[btn_colours[button + (NUM_BTNS_WITH_LEDS * current_page)]];
+}
+
+void saveButtonColour(int button, int colour){
+  btn_colours[button + (NUM_BTNS_WITH_LEDS * current_page)] = colour;
+  EEPROM.write(btn_colour_addr[button + (NUM_BTNS_WITH_LEDS * current_page)], colour);
   // Print colour changed
   lcd.setCursor(0,1);
-  lcd.print("                ");
+  printToScreen("                ");
   lcd.setCursor(0,1);
-  lcd.print("B");
-  lcd.print(button);
-  lcd.print(" colour changed.")
-  delay(2000);
+  printToScreen("B");
+  printToScreen(button);
+  printToScreen(" colour changed.");
+  delay(1000);
   lcd.setCursor(0,1);
-  lcd.print("                ");
+  printToScreen("                ");
 }
-
-
-
-bool buttonColour(int button){
-  return EEPROM.read(btn_colour_addr[button + (NUM_GEN_BTNS * current_page)]);
-}
-
-
 
 bool isBtnInToggleMode(int button){
-  return EEPROM.read(btn_mode_addr[button + (NUM_GEN_BTNS * current_page)]);
+  return btn_toggle_modes[button + (NUM_GEN_BTNS * current_page)];
 }
 
 
 
+/*******************************************************/
+/***************  INPUT TRIGGER FUNCTIONS  ***************/
+/*******************************************************/
+
+void generalButtonPress(int btn){
+  // printToScreen("Button Pressed");
+  switch (current_mode) {
+    case MIDI_MODE:
+      // Publish Midi message
+      if(!isBtnInToggleMode(btn)){
+        controlChange(current_page, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)!getBtnState(btn)*127); // Control change on or off
+      }
+      else {
+        setToggBtnState(btn, !getToggBtnState(btn));
+        controlChange(current_page, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)getToggBtnState(btn)*127);
+      }
+      break;
+
+    case LED_CONFIG_MODE:
+      selected_button = btn;
+      changeMode(COLOUR_CHOOSER_MODE);
+      break;
+
+    case COLOUR_CHOOSER_MODE:
+      if(btn == selected_button || selected_button >= NUM_GEN_BTNS){ // Needed to allow confirmation when changing pg btns (until roller is used)
+        saveButtonColour(selected_button, currentColourChooserIndex);
+        changeMode(LED_CONFIG_MODE);
+      }
+      break;
+
+    case PUSHBUTTON_CONFIG_MODE:
+      switchBtnMode(btn);
+      break;
+  }
+}
+
+
+void generalButtonRelease(int btn){
+  switch (current_mode) {
+    case MIDI_MODE:
+      if(!isBtnInToggleMode(btn)){
+        controlChange(current_page, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)(!getBtnState(btn)*127)); // Control change on or off
+      }
+      break;
+
+    case LED_CONFIG_MODE:
+      break;
+
+    case COLOUR_CHOOSER_MODE:
+      break;
+
+    case PUSHBUTTON_CONFIG_MODE:
+      break;
+  }
+}
+
+void pageUpButtonPress(){
+  switch (current_mode) {
+    case LED_CONFIG_MODE:
+      selected_button = NUM_GEN_BTNS+1;
+      changeMode(COLOUR_CHOOSER_MODE);
+      break;
+
+    case COLOUR_CHOOSER_MODE:
+      // changeMode(LED_CONFIG_MODE);  // Cancel colour chooser
+      if(currentColourChooserIndex < NUM_COLOUR_OPTIONS-1)
+        currentColourChooserIndex++;
+      break;
+
+    default:
+      if(current_page == NUM_PAGES)
+        current_page = 1;
+      else
+        current_page++;
+      break;
+  }
+}
+
+void pageUpButtonRelease(){
+  // Do nothing
+}
+
+void pageDownButtonPress(){
+  switch (current_mode) {
+    case LED_CONFIG_MODE:
+      selected_button = NUM_GEN_BTNS+2;
+      changeMode(COLOUR_CHOOSER_MODE);
+      break;
+    case COLOUR_CHOOSER_MODE:
+      // Cancel colour chooser
+      // changeMode(LED_CONFIG_MODE);
+      if(currentColourChooserIndex > 0)
+        currentColourChooserIndex--;
+      break;
+
+    default:
+      if(current_page <= 1)
+        current_page = NUM_PAGES;
+      else
+        current_page--;
+      break;
+  }
+}
+
+void pageDownButtonRelease(){
+  // Do nothing
+}
+
+void modeButtonPress(){
+  switch (current_mode) {
+    case MIDI_MODE:
+      changeMode(current_mode + 1);
+      break;
+
+    case LED_CONFIG_MODE:
+      changeMode(PUSHBUTTON_CONFIG_MODE);
+      break;
+
+    case COLOUR_CHOOSER_MODE:
+      // Cancel colour chooser
+      changeMode(LED_CONFIG_MODE);
+      break;
+
+    case PUSHBUTTON_CONFIG_MODE:
+      changeMode(0);
+      break;
+  }
+}
+
+void rollerChange(int amount){
+  // TODO Change to encoder
+  switch (current_mode) {
+    case MIDI_MODE:
+      // Send midi command OR mouse command
+      if(amount != 0)
+        controlChange(0, 0x0B, exp_pedal_in/4);
+      // lcd.setCursor(15-4,1);
+      // printToScreen("xp");
+      // printToScreen(exp_pedal_in/4 *100/255);
+      // if(exp_pedal_in/4*100/255 < 100) {printToScreen(" ");}
+      
+      break;
+
+    case LED_CONFIG_MODE:
+      // Set brightness (limit to 0-255)
+      if ((amount > 0 && brightness+amount < 255)  ||  (amount < 0 && brightness+amount > 0))
+        brightness += amount;
+      
+      // strip.setBrightness(brightness);
+      break;
+
+    case COLOUR_CHOOSER_MODE:
+      // TODO: Bring back after changing roller to encoder
+      // Change colour chooser colour
+      currentColourChooserIndex = exp_pedal_in/1024*NUM_COLOUR_OPTIONS;
+      // if(amount > 0 && currentColourChooserIndex < NUM_COLOUR_OPTIONS-1)
+      //   currentColourChooserIndex++;
+      // else if(amount < 0 && currentColourChooserIndex > 0)
+      //   currentColourChooserIndex--;
+      break;
+
+    case PUSHBUTTON_CONFIG_MODE:
+      // Do nothing
+      break;
+  }
+}
+
+
+
+/*******************************************************/
+/***************   SETUP AND MAIN LOOP   ***************/
+/*******************************************************/
 void setup() {
-  // Populate EEPROM address list
-  for(int i = 0; i < (NUM_GEN_BTNS * NUM_PAGES); i++){
+  // RESET EEPROM
+  // for (int i = 0 ; i < EEPROM.length() ; i++) {
+  //   EEPROM.write(i, 255);
+  // }
+
+  //
+  // POPULATE EEPROM
+  //
+  // Gen Button Modes
+  int mem_btn_mode_start = 0;
+  int mem_btn_mode_size = NUM_GEN_BTNS * NUM_PAGES;
+  for(int i = mem_btn_mode_start; i < mem_btn_mode_size; i++){
     btn_mode_addr[i] = i;
 
+    // Initialize values to 1 if they have never been written
+    if(EEPROM.read(btn_mode_addr[i]) != 1 && EEPROM.read(btn_mode_addr[i]) != 0)
+      EEPROM.write(btn_mode_addr[i], 1);
+    else
+      btn_toggle_modes[i] = EEPROM.read(btn_mode_addr[i]);
+  }
+
+  // Button Colours
+  int mem_btn_colour_start = mem_btn_mode_start + mem_btn_mode_size;
+  int mem_btn_colour_size = NUM_BTNS_WITH_LEDS * NUM_PAGES;
+  for(int i = 0; i < mem_btn_colour_size; i++){
+    btn_colour_addr[i] = i + mem_btn_colour_start;
+
     // Initialize values to 0 if they have never been written
-    if(EEPROM.read(btn_mode_addr[i]) == 255)
-      EEPROM.write(btn_mode_addr[i], 0);
+    if(EEPROM.read(btn_colour_addr[i]) >= NUM_COLOUR_OPTIONS)
+      EEPROM.write(btn_colour_addr[i], 0);
+    else
+      btn_colours[i] = EEPROM.read(btn_colour_addr[i]);
+  }
+
+  // Gen Button States
+  int mem_tog_btn_state_start = mem_btn_colour_start+mem_btn_colour_size;
+  int mem_tog_btn_state_size = NUM_GEN_BTNS * NUM_PAGES;
+  for(int i = 0; i < mem_tog_btn_state_size; i++){
+    btn_tog_state_addr[i] = i + mem_tog_btn_state_start;
+
+    // Read in the state values from last shutdown, initializing them to 0 (off) if they have never been written
+    if(EEPROM.read(btn_tog_state_addr[i]) != 1 && EEPROM.read(btn_tog_state_addr[i]) != 0)
+      EEPROM.write(btn_tog_state_addr[i], 0);
+    else
+      toggle_btn_states[i] = EEPROM.read(btn_tog_state_addr[i]);
   }
   
+
+
   // Setup MIDI over USB serial
   Serial.begin(115200);
 
   // Setup pins
   pinMode(BTN_PAGE_UP_PIN, INPUT_PULLUP);
+  pinMode(BTN_PAGE_DOWN_PIN, INPUT_PULLUP);
+  pinMode(BTN_MODE_PIN, INPUT_PULLUP);
   for(int i = 0; i < NUM_GEN_BTNS; i++){
     pinMode(GEN_BTN_PINS[i], INPUT_PULLUP);
   }
@@ -281,17 +683,19 @@ void setup() {
   lcd.init();
   lcd.backlight();
   lcd.setCursor(0,0);
-  lcd.print("Hello!");
+  printToScreen("Hello!");
   lcd.setCursor(0,1);
-  lcd.print("Midi Pedal v0.1");
+//  printToScreen("Midi Pedal v0.1");
+  printToScreen("Hi Soleena!!");
   delay(2000);
   lcd.clear();
   lcd.setCursor(0,0);
-  lcd.print("PAGE ");
-  lcd.print(current_page);
+  printToScreen("PAGE ");
+  printToScreen(current_page);
   
   // Setup NeoPixel strip
   strip.begin();
+  // strip.fill(GREEN, 0, 18);
   strip.show(); // Initialize all pixels to 'off'
 
   // Setup Mouse Scroll Control
@@ -301,104 +705,67 @@ void setup() {
 
 
 void loop() {
-  ///////////////////
-  //  BUTTON MODE CHANGES
-  ///////////////////
-  for(int i = 0; i < NUM_GEN_BTNS; i++){
-    if(!digitalRead(GEN_BTN_PINS[i])){
-      // Start timer if not already started
-      if(!btn_long_hold_start_times[i])
-        btn_long_hold_start_times[i] = millis();
-      else if ((millis() - btn_long_hold_start_times[i]) > MODE_CHANGE_DELAY){
-        switchBtnMode(i);
-        btn_long_hold_start_times[i] = 0;
-      }
-    }
-    else
-      btn_long_hold_start_times[i] = 0;
-  }
-  
-  
-  ///////////////////
   //  GENERAL BUTTONS
-  ///////////////////
   for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
-    
     // Check for press (and debounce input)
-    if(digitalRead(GEN_BTN_PINS[btn]) != btn_states[btn] && (millis() - btn_last_change_times[btn]) > DEBOUNCE_DELAY){
+    if(digitalRead(GEN_BTN_PINS[btn]) != getBtnState(btn) && (millis() - btn_last_change_times[btn]) > DEBOUNCE_DELAY){
       btn_last_change_times[btn] = millis();
-      btn_states[btn] = digitalRead(GEN_BTN_PINS[btn]);
+      setBtnState(btn, digitalRead(GEN_BTN_PINS[btn]));
 
-      // Publish Midi message
-      if(!isBtnInToggleMode(btn)){
-        controlChange(current_page, CONTROL_NUMBER[current_page*NUM_GEN_BTNS + btn], (int)(!btn_states[btn])*127); // Control change on or off
-        
-        lcd.setCursor(0,1);
-        lcd.print("BTN ");
-        lcd.print(btn);
-        lcd.print("|");
-        lcd.print(!btn_states[btn]);
-      }
-      else if(isBtnInToggleMode(btn) && !btn_states[btn]){
-        // Flip toggle only on falling edge
-        toggle_btn_states[btn] = !toggle_btn_states[btn];
-        controlChange(current_page, CONTROL_NUMBER[current_page*NUM_GEN_BTNS + btn], (int)toggle_btn_states[btn]*127);
-        
-        lcd.setCursor(0,1);
-        lcd.print("tBTN");
-        lcd.print(btn);
-        lcd.print("|");
-        lcd.print(!toggle_btn_states[btn]);
-      }
+      if(getBtnState(btn))
+        generalButtonRelease(btn);
+      else
+        generalButtonPress(btn);
     } 
   }
 
-
-  ///////////////////
   // PAGE UP BUTTON
-  ///////////////////
-  
   if(digitalRead(BTN_PAGE_UP_PIN) != btn_page_up_state && (millis() - btn_page_up_last_change_time) > DEBOUNCE_DELAY){
     btn_page_up_last_change_time = millis();
     btn_page_up_state = !btn_page_up_state;
     
-    // Change page only on rising edge
-    if(btn_page_up_state){
-      current_page++;
-      if(current_page >= NUM_PAGES){
-        current_page = 0;
-      }
-
-      // Update LCD Page Number
-      lcd.setCursor(0,0);
-      lcd.print("PAGE ");
-      lcd.print(current_page);
-      lcd.setCursor(0,1);
-      lcd.print("                ");
-    }
+    if(btn_page_up_state)
+      pageUpButtonRelease();
+    else
+      pageUpButtonPress();
   }
-  
 
-  ///////////////////
+  // PAGE DOWN BUTTON
+  if(digitalRead(BTN_PAGE_DOWN_PIN) != btn_page_down_state && (millis() - btn_page_down_last_change_time) > DEBOUNCE_DELAY){
+    btn_page_down_last_change_time = millis();
+    btn_page_down_state = !btn_page_down_state;
+    
+    if(btn_page_down_state)
+      pageDownButtonRelease();
+    else
+      pageDownButtonPress();
+  }
+
+  // MODE BUTTON
+  if(digitalRead(BTN_MODE_PIN) != btn_mode_state && (millis() - btn_mode_last_change_time) > DEBOUNCE_DELAY){
+    btn_mode_last_change_time = millis();
+    btn_mode_state = !btn_mode_state;
+    
+    if(!btn_mode_state)
+      modeButtonPress();
+  }
+
   // EXPRESSION PEDAL
-  ///////////////////
   exp_pedal_in = analogRead(EXP_PEDAL_PIN);
   if(exp_pedal_in != prev_exp_pedal_in && current_page != 2){
-    controlChange(0, 0x0B, exp_pedal_in/4);
-    lcd.setCursor(15-4,1);
-    lcd.print("xp");
-    lcd.print(exp_pedal_in/4 *100/255);
-    if(exp_pedal_in/4*100/255 < 100) {lcd.print(" ");}
+    rollerChange(prev_exp_pedal_in - exp_pedal_in);
     prev_exp_pedal_in = exp_pedal_in;
+    // TODO Change to encoder
   }
 
-
-  ///////////////////
   // MOUSE SCROLL WHEEL
-  ///////////////////
   if(millis() - mouse_delay_timer > mouse_delay && current_page == 2){
     mouse_delay_timer = millis();
-    Mouse.move(0,0, -(char)(prev_scroller_in - exp_pedal_in/8));
+    // Mouse.move(0,0, -(char)(prev_scroller_in - exp_pedal_in/8));
     prev_scroller_in = exp_pedal_in/8;
   }
+
+  refreshLEDs();
+  refreshLCD();
+  delay(1);
 }
