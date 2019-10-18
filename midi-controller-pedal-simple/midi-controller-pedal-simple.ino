@@ -95,7 +95,7 @@
 /*****************************************************/
 /***************      CONSTANTS       ***************/
 /*****************************************************/
-const int NUM_GEN_BTNS = 5;
+const int NUM_GEN_BTNS = 4;
 const long DEBOUNCE_DELAY = 50;
 const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
 const int NUM_PAGES = 3;
@@ -123,11 +123,11 @@ const int NUM_LEDS_BTWEEN_BUTTONS = 0;
 // Led Index Map
 //    0   1   2   3   4
 //    11  10  9   8   7
-int GEN_BTN_PINS[] =    {4, 5, 6, 7, 8};
+int GEN_BTN_PINS[] =    {4, 5, 6, 7};
 int BTN_LED_INDEXES[] = {0, 1, 2, 3, 4};
 int EXP_PEDAL_PIN = A0;
 int LED_PIN = 19;
-int BTN_PAGE_UP_PIN = 4;
+int BTN_PAGE_UP_PIN = 8;
 
 /*****************************************************/
 /***************    STATE VARIABLES    ***************/
