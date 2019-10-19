@@ -51,6 +51,7 @@
 /*****************************************************/
 /***************      CONSTANTS       ***************/
 /*****************************************************/
+const int EXP_PEDAL_SENSITIVITY = 1; // Linear factor.
 const int NUM_GEN_BTNS = 4;
 const long DEBOUNCE_DELAY = 100;
 const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
@@ -105,7 +106,6 @@ int current_page = 1; // Midi channel used corresponds to current page. This ran
 
 int exp_pedal_in = 0;
 int prev_exp_pedal_in = 0;
-long oldPosition  = -999;
 
 // int selected_button = 0;
 
@@ -325,11 +325,13 @@ void pageUpButtonPress(){
 void rollerChange(int amount){
   if(amount == 0 || 
     (amount < 0 && roller_values[current_page] == 0) || 
-    (amount > 0 && roller_values[current_page] == 512))
+    (amount > 0 && roller_values[current_page] == 128))
     return;
 
+  roller_values[current_page]+= amount * EXP_PEDAL_SENSITIVITY;
+
   if(current_page != 3)
-    controlChange(0, 0x0B, roller_values[current_page]/4);
+    controlChange(0, 0x0B, roller_values[current_page]);
   else{  
     // MOUSE SCROLL WHEEL
     if(millis() - mouse_delay_timer > mouse_delay && current_page == 2){
@@ -477,7 +479,7 @@ void loop() {
   }
 
   // EXPRESSION PEDAL
-  rollerChange(myEnc.read());
+  rollerChange((int)myEnc.read());
   myEnc.write(0);
 
   refreshLEDs();
