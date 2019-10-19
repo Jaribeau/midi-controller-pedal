@@ -51,7 +51,7 @@
 /*****************************************************/
 /***************      CONSTANTS       ***************/
 /*****************************************************/
-const int EXP_PEDAL_SENSITIVITY = 1; // Linear factor.
+const int EXP_PEDAL_SENSITIVITY = 2; // Linear factor.
 const int NUM_GEN_BTNS = 4;
 const long DEBOUNCE_DELAY = 100;
 const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
@@ -81,7 +81,7 @@ const int NUM_LEDS_BTWEEN_BUTTONS = 0;
 //    0   1   2   3   4
 //    11  10  9   8   7
 int GEN_BTN_PINS[] =    {4, 5, 6, 7};
-int BTN_LED_INDEXES[] = {0, 1, 2, 3, 4};
+int BTN_LED_INDEXES[] = {0, 1, 2, 3, 4, 17};
 int EXP_PEDAL_PIN = A0;
 int LED_PIN = 19;
 int BTN_PAGE_UP_PIN = 8;
@@ -235,7 +235,9 @@ void setBtnLEDs(int btn, uint32_t colour){
 }
 
 void refreshLEDs(){
-  setBtnLEDs(4, getButtonColour(4));
+  setBtnLEDs(4, getButtonColour(4));  // Page button
+  int c = 10 + roller_values[current_page]*roller_values[current_page]/128;
+  setBtnLEDs(5, strip.Color(c,c,c));  // Roller indicator   R, B, G
   for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
     if(isBtnInToggleMode(btn) && getToggBtnState(btn)){
       setBtnLEDs(btn, getButtonColour(btn));
@@ -411,6 +413,7 @@ void setup() {
   // Setup NeoPixel strip
   strip.begin();
   // strip.fill(GREEN, 0, 18);
+  strip.setBrightness(64);
   strip.show(); // Initialize all pixels to 'off'
 
   // Attach interrupt service routines (ISRs)
@@ -479,7 +482,7 @@ void loop() {
   }
 
   // EXPRESSION PEDAL
-  rollerChange((int)myEnc.read());
+  rollerChange(-(int)myEnc.read());
   myEnc.write(0);
 
   refreshLEDs();
