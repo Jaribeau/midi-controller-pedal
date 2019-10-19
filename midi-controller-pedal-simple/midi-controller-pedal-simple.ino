@@ -27,24 +27,6 @@
 // Refactor to use buttonPress(), buttonRelease(), rollerChange() (only write debouncing once in the DI loop).
 // Add switch statement in buttonPress() that calls genBtnPress(), pageUp/DownPressed(), modePressed()
 
-// LED config mode:
-  // changeMode(LED_CONFIG_MODE)
-  // "Select Button" 
-  // "Blink gen buttons"
-  // btnPress()
-      // setSelectedPin()
-      // changeMode(LED_CONFIG_MODE)
-
-// Colour Chooser Mode
-  // changeMode(COLOUR_CHOOSER_MODE)
-      // black out all buttons except one being set
-      // cancel button?
-  // rollerChange() 
-      // Change the colour shown on that button
-  // btnPress()
-      // setPinColour(button)
-      // changeMode(LED_CONFIG_MODE)
-
 // MIDI Mode
   // changeMode(MIDI_MODE)
   // btnPress()
@@ -57,18 +39,8 @@
       // setLed / screen #
       // OR scrollMouse()
 
-// Pushbutton Config Mode
-  // changeMode(PUSHBUTTON_CONFIG_MODE)
-  // btnPress()
-      // switchToggleMode()
-      // blinkButton()
-      // "BTN X mode: Togg / Momentary"
 
-
-// - Plan config interaction (mode selection, setting LEDs, setting toggle/momentary, saving presets)
 // - Expression pedal interface (page changes channel, LEDs inditicate direction to setpoint, changes apply after hitting setpoint)
-// - Explore sending info from Live to Pedal (https://julienbayle.studio/PythonLiveAPI_documentation/Live10.0.2.xml)
-// - Saving presets (preset mode, new, delete, save, load, name)
 
 /*****************************************************/
 /*************** PROPOSED PEDAL LAYOUT ***************/
@@ -139,6 +111,7 @@ bool btn_colours[NUM_BTNS_WITH_LEDS * NUM_PAGES];
 
 long btn_last_change_times[] = {0, 0, 0, 0, 0, 0, 0};
 long btn_long_hold_start_times[] = {0, 0, 0, 0, 0, 0, 0};
+bool btn_change_ISR_flag[] = {0, 0, 0, 0, 0, 0, 0};
 
 bool btn_page_up_state = 0;
 long btn_page_up_last_change_time = 0;
@@ -319,8 +292,10 @@ void refreshLCD(){
   printToScreen("PG ");
   printToScreen(current_page);
   printToScreen("            ");
-  lcd.setCursor(0,1);
-  printToScreen("                ");
+  // lcd.setCursor(0,1);
+  // printToScreen(btn_states[3]);
+  // printToScreen(toggle_btn_states[3]);
+  // printToScreen("            ");
 }
 
 int getButtonColour(int button){
@@ -346,6 +321,20 @@ bool isBtnInToggleMode(int button){
   return btn_toggle_modes[button + (NUM_GEN_BTNS * current_page)];
 }
 
+//
+// ISR Functions
+//
+bool page_up_btton_press_ISR_flag = false;
+void pageUpButtonPressISR(){  if(millis() - btn_page_up_last_change_time > DEBOUNCE_DELAY){  page_up_btton_press_ISR_flag = true;}}
+
+void generalButtonChangeISR0(){  if(millis() - btn_last_change_times[0] > DEBOUNCE_DELAY){ btn_change_ISR_flag[0] = true;}}
+
+void generalButtonChangeISR3(){  
+  // if(millis() - btn_last_change_times[3] > DEBOUNCE_DELAY)
+  // { 
+    btn_change_ISR_flag[3] = true;
+  // }
+}
 
 
 /*******************************************************/
@@ -353,8 +342,12 @@ bool isBtnInToggleMode(int button){
 /*******************************************************/
 
 void generalButtonPress(int btn){
+  btn_change_ISR_flag[btn] = false;
+  btn_last_change_times[btn] = millis();
+
   // Publish Midi message
   if(!isBtnInToggleMode(btn)){
+    setBtnState(btn, 1);
     controlChange(current_page, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)!getBtnState(btn)*127); // Control change on or off
   }
   else {
@@ -365,12 +358,20 @@ void generalButtonPress(int btn){
 
 
 void generalButtonRelease(int btn){
+  btn_change_ISR_flag[btn] = false;
+  btn_last_change_times[btn] = millis();
+
   if(!isBtnInToggleMode(btn)){
+    setBtnState(btn, 0);
     controlChange(current_page, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)(!getBtnState(btn)*127)); // Control change on or off
   }
 }
 
-void pageUpButtonPress(){
+void pageUpButtonPress(){    
+    btn_page_up_state = true;
+    page_up_btton_press_ISR_flag = false;
+    btn_page_up_last_change_time = millis();
+
     if(current_page == NUM_PAGES)
       current_page = 1;
     else
@@ -378,18 +379,9 @@ void pageUpButtonPress(){
 }
 
 void pageUpButtonRelease(){
-  // Do nothing
-}
-
-void pageDownButtonPress(){
-  if(current_page <= 1)
-    current_page = NUM_PAGES;
-  else
-    current_page--;
-}
-
-void pageDownButtonRelease(){
-  // Do nothing
+    btn_page_up_state = false;
+    page_up_btton_press_ISR_flag = false;
+    btn_page_up_last_change_time = millis();
 }
 
 void rollerChange(int amount){
@@ -486,6 +478,12 @@ void setup() {
   // strip.fill(GREEN, 0, 18);
   strip.show(); // Initialize all pixels to 'off'
 
+  // Attach interrupt service routines (ISRs)
+  // attachInterrupt(digitalPinToInterrupt(BTN_PAGE_UP_PIN), pageUpButtonPressISR, RISING);
+  // attachInterrupt(digitalPinToInterrupt(GEN_BTN_PINS[0]), generalButtonPressISR0, RISING);
+  // attachInterrupt(digitalPinToInterrupt(GEN_BTN_PINS[0]), generalButtonReleaseISR0, FALLING);
+  attachInterrupt(digitalPinToInterrupt(GEN_BTN_PINS[3]), generalButtonChangeISR3, CHANGE);
+
   // Setup Mouse Scroll Control
   Mouse.begin();
 }
@@ -493,47 +491,60 @@ void setup() {
 
 
 void loop() {
+  // Check ISR flags
+  // if (page_up_btton_press_ISR_flag){pageUpButtonPress();}
+  // if (btn_change_ISR_flag[0]){generalButtonPress(0);}
+  // if (btn_release_ISR_flag[0]){generalButtonRelease(0);}
+
+  if (btn_change_ISR_flag[3]){
+    if(digitalRead(GEN_BTN_PINS[3]))
+      generalButtonPress(3);
+    else
+      generalButtonRelease(3);
+  }
+
+
   ///////////////////
   //  BUTTON MODE CHANGES
   ///////////////////
-  for(int i = 0; i < NUM_GEN_BTNS; i++){
-    if(!digitalRead(GEN_BTN_PINS[i])){
-      // Start timer if not already started
-      if(!btn_long_hold_start_times[i])
-        btn_long_hold_start_times[i] = millis();
-      else if ((millis() - btn_long_hold_start_times[i]) > MODE_CHANGE_DELAY){
-        switchBtnMode(i);
-        btn_long_hold_start_times[i] = 0;
-      }
-    }
-    else
-      btn_long_hold_start_times[i] = 0;
-  }
+  // for(int i = 0; i < NUM_GEN_BTNS; i++){
+  //   if(!digitalRead(GEN_BTN_PINS[i])){
+  //     // Start timer if not already started
+  //     if(!btn_long_hold_start_times[i])
+  //       btn_long_hold_start_times[i] = millis();
+  //     else if ((millis() - btn_long_hold_start_times[i]) > MODE_CHANGE_DELAY){
+  //       switchBtnMode(i);
+  //       btn_long_hold_start_times[i] = 0;
+  //     }
+  //   }
+  //   else
+  //     btn_long_hold_start_times[i] = 0;
+  // }
 
   //  GENERAL BUTTONS
-  for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
-    // Check for press (and debounce input)
-    if(digitalRead(GEN_BTN_PINS[btn]) != getBtnState(btn) && (millis() - btn_last_change_times[btn]) > DEBOUNCE_DELAY){
-      btn_last_change_times[btn] = millis();
-      setBtnState(btn, digitalRead(GEN_BTN_PINS[btn]));
+  // for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
+  //   // Check for press (and debounce input)
+  //   if(digitalRead(GEN_BTN_PINS[btn]) != getBtnState(btn) && (millis() - btn_last_change_times[btn]) > DEBOUNCE_DELAY){
+  //     btn_last_change_times[btn] = millis();
+  //     setBtnState(btn, digitalRead(GEN_BTN_PINS[btn]));
 
-      if(getBtnState(btn))
-        generalButtonRelease(btn);
-      else
-        generalButtonPress(btn);
-    } 
-  }
+  //     if(getBtnState(btn))
+  //       generalButtonRelease(btn);
+  //     else
+  //       generalButtonPress(btn);
+  //   } 
+  // }
 
   // PAGE UP BUTTON
-  if(digitalRead(BTN_PAGE_UP_PIN) != btn_page_up_state && (millis() - btn_page_up_last_change_time) > DEBOUNCE_DELAY){
-    btn_page_up_last_change_time = millis();
-    btn_page_up_state = !btn_page_up_state;
+  // if(digitalRead(BTN_PAGE_UP_PIN) != btn_page_up_state && (millis() - btn_page_up_last_change_time) > DEBOUNCE_DELAY){
+  //   btn_page_up_last_change_time = millis();
+  //   btn_page_up_state = !btn_page_up_state;
     
-    if(btn_page_up_state)
-      pageUpButtonRelease();
-    else
-      pageUpButtonPress();
-  }
+  //   if(btn_page_up_state)
+      // pageUpButtonRelease();
+  //   else
+  //     pageUpButtonPress();
+  // }
 
   // EXPRESSION PEDAL
   exp_pedal_in = analogRead(EXP_PEDAL_PIN);
