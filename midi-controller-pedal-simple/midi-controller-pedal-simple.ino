@@ -1,24 +1,7 @@
-#ifdef DEBUG
- #define DEBUG_PRINT(x) Serial.println(x)
-#else
- #define DEBUG_PRINT(x)
-#endif
-
-// #define NO_LCD
-
-#ifdef NO_LCD
-  #define printToScreen(x)  Serial.println(x)
-#else
-  #define printToScreen(x)  lcd.print(x)
-  // #define lcd.print(x) Serial.print(x)
-  // #define lcd.setCursor(x,x) Serial.println();
-#endif
-
 #include "MIDIUSB.h"
 #include <HCSR04.h>
 #include <EEPROM.h>
 #include <Wire.h> 
-#include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
 #include <Mouse.h>
 
@@ -68,7 +51,7 @@
 /***************      CONSTANTS       ***************/
 /*****************************************************/
 const int NUM_GEN_BTNS = 4;
-const long DEBOUNCE_DELAY = 50;
+const long DEBOUNCE_DELAY = 100;
 const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
 const int NUM_PAGES = 3;
 
@@ -130,22 +113,31 @@ long mouse_delay = 100;
 
 
 // LED Setup
-Adafruit_NeoPixel strip(LED_COUNT, LED_PIN);
-LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ400);
 
 uint32_t GREENISHWHITE = strip.Color(0, 64, 0, 64);
-uint32_t RED = strip.Color(64, 0, 0, 0);
-uint32_t GREEN = strip.Color(0, 64, 0, 0);
-uint32_t BLUE = strip.Color(0, 0, 64, 0);
+uint32_t RED = strip.Color(255, 1, 1);
+uint32_t GREEN = strip.Color(1, 255, 1);
+uint32_t BLUE = strip.Color(1, 1, 255);
 uint32_t WHITE = strip.Color(0, 0, 0, 64);
 uint32_t BLACK = strip.Color(0, 0, 0, 0);
-uint32_t PURPLE = strip.Color(64, 0, 64, 0);
+uint32_t PURPLE = strip.Color(64, 0, 64);
 uint32_t COLOUR_CHOOSER_COLOURS[] = {GREENISHWHITE,
                                   RED,
                                   GREEN,
                                   BLUE,
                                   WHITE,
                                   PURPLE};
+
+// uint32_t RED_H = strip.gamma32(strip.ColorHSV(35000));
+uint32_t TURQOISE_H = strip.gamma32(strip.ColorHSV(38000));
+uint32_t PURPLE_H = strip.gamma32(strip.ColorHSV(20000));
+uint32_t BLUE_H = strip.gamma32(strip.ColorHSV(5000));
+uint32_t WHITE_H = strip.ColorHSV(50000);
+uint32_t GREEN_H = strip.gamma32(strip.ColorHSV(60000));
+uint32_t PAGE_COLOURS[] = {       TURQOISE_H,
+                                  PURPLE_H,
+                                  BLUE_H};
 int NUM_COLOUR_OPTIONS = 6;
 int currentColourChooserIndex = 0;
 int brightness = 125; //0 - 255
@@ -208,20 +200,6 @@ void messageReceivedCallback(byte channel, byte pitch, byte velocity)
 void switchBtnMode(int button){
   btn_toggle_modes[button + (NUM_GEN_BTNS * current_page)] = !isBtnInToggleMode(button);
   EEPROM.write(btn_mode_addr[button + (NUM_GEN_BTNS * current_page)], isBtnInToggleMode(button)); 
-
-  // Indicate 
-  blinkButton(button + (NUM_GEN_BTNS * current_page), 3);
-
-  lcd.setCursor(0,1);
-  printToScreen("B");
-  printToScreen(button);
-  if(isBtnInToggleMode(button))
-    printToScreen(": toggle      ");
-  else
-    printToScreen(": momentary   ");
-  delay(1000);
-  lcd.setCursor(0,1);
-  printToScreen("                ");
 }
 
 int getToggBtnState(int button){
@@ -252,24 +230,8 @@ void setBtnLEDs(int btn, uint32_t colour){
   strip.setPixelColor(BTN_LED_INDEXES[btn], colour);
 }
 
-void blinkButton(int btn, int numFlashes){
-  uint32_t colour = getButtonColour(btn);
-  for(int x = 0; x < numFlashes; x++){
-    setBtnLEDs(btn, colour);
-    delay(100);
-    setBtnLEDs(btn, BLACK);
-    delay(100);
-  }
-  setBtnLEDs(btn, colour);
-}
-
 void refreshLEDs(){
-  // TODO set roller LED
-  setBtnLEDs(7, RED); // Page Up
-  setBtnLEDs(8, RED); // Page Down
-  setBtnLEDs(9, RED); // Mode
-  setBtnLEDs(10, RED); // Roller
-
+  setBtnLEDs(4, getButtonColour(4));
   for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
     if(isBtnInToggleMode(btn) && getToggBtnState(btn)){
       setBtnLEDs(btn, getButtonColour(btn));
@@ -287,34 +249,14 @@ void refreshLEDs(){
   strip.show();
 }
 
-void refreshLCD(){
-  lcd.setCursor(0,0);
-  printToScreen("PG ");
-  printToScreen(current_page);
-  printToScreen("            ");
-  // lcd.setCursor(0,1);
-  // printToScreen(btn_states[3]);
-  // printToScreen(toggle_btn_states[3]);
-  // printToScreen("            ");
-}
-
 int getButtonColour(int button){
-  return COLOUR_CHOOSER_COLOURS[btn_colours[button + (NUM_BTNS_WITH_LEDS * current_page)]];
+  return PAGE_COLOURS[current_page-1];
+  // return COLOUR_CHOOSER_COLOURS[btn_colours[button + (NUM_BTNS_WITH_LEDS * current_page)]];
 }
 
 void saveButtonColour(int button, int colour){
   btn_colours[button + (NUM_BTNS_WITH_LEDS * current_page)] = colour;
   EEPROM.write(btn_colour_addr[button + (NUM_BTNS_WITH_LEDS * current_page)], colour);
-  // Print colour changed
-  lcd.setCursor(0,1);
-  printToScreen("                ");
-  lcd.setCursor(0,1);
-  printToScreen("B");
-  printToScreen(button);
-  printToScreen(" colour changed.");
-  delay(1000);
-  lcd.setCursor(0,1);
-  printToScreen("                ");
 }
 
 bool isBtnInToggleMode(int button){
@@ -347,7 +289,6 @@ void generalButtonPress(int btn){
 
   // Publish Midi message
   if(!isBtnInToggleMode(btn)){
-    setBtnState(btn, 1);
     controlChange(current_page, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)!getBtnState(btn)*127); // Control change on or off
   }
   else {
@@ -362,7 +303,6 @@ void generalButtonRelease(int btn){
   btn_last_change_times[btn] = millis();
 
   if(!isBtnInToggleMode(btn)){
-    setBtnState(btn, 0);
     controlChange(current_page, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)(!getBtnState(btn)*127)); // Control change on or off
   }
 }
@@ -378,19 +318,11 @@ void pageUpButtonPress(){
       current_page++;
 }
 
-void pageUpButtonRelease(){
-    btn_page_up_state = false;
-    page_up_btton_press_ISR_flag = false;
-    btn_page_up_last_change_time = millis();
-}
-
 void rollerChange(int amount){
   // TODO Change to encoder
   // Send midi command OR mouse command
   if(amount != 0)
     controlChange(0, 0x0B, exp_pedal_in/4);
-  // lcd.setCursor(15-4,1);
-  // printToScreen("xp");
   // printToScreen(exp_pedal_in/4 *100/255);
   // if(exp_pedal_in/4*100/255 < 100) {printToScreen(" ");}
 }
@@ -449,7 +381,6 @@ void setup() {
   }
   
 
-
   // Setup MIDI over USB serial
   Serial.begin(115200);
 
@@ -458,20 +389,6 @@ void setup() {
   for(int i = 0; i < NUM_GEN_BTNS; i++){
     pinMode(GEN_BTN_PINS[i], INPUT_PULLUP);
   }
-
-  // Setup LCD
-  lcd.init();
-  lcd.backlight();
-  lcd.setCursor(0,0);
-  printToScreen("Hello!");
-  lcd.setCursor(0,1);
-//  printToScreen("Midi Pedal v0.1");
-  printToScreen("Hi Soleena!!");
-  delay(2000);
-  lcd.clear();
-  lcd.setCursor(0,0);
-  printToScreen("PAGE ");
-  printToScreen(current_page);
   
   // Setup NeoPixel strip
   strip.begin();
@@ -482,7 +399,8 @@ void setup() {
   // attachInterrupt(digitalPinToInterrupt(BTN_PAGE_UP_PIN), pageUpButtonPressISR, RISING);
   // attachInterrupt(digitalPinToInterrupt(GEN_BTN_PINS[0]), generalButtonPressISR0, RISING);
   // attachInterrupt(digitalPinToInterrupt(GEN_BTN_PINS[0]), generalButtonReleaseISR0, FALLING);
-  attachInterrupt(digitalPinToInterrupt(GEN_BTN_PINS[3]), generalButtonChangeISR3, CHANGE);
+
+  // attachInterrupt(digitalPinToInterrupt(GEN_BTN_PINS[3]), generalButtonChangeISR3, CHANGE);
 
   // Setup Mouse Scroll Control
   Mouse.begin();
@@ -496,60 +414,56 @@ void loop() {
   // if (btn_change_ISR_flag[0]){generalButtonPress(0);}
   // if (btn_release_ISR_flag[0]){generalButtonRelease(0);}
 
-  if (btn_change_ISR_flag[3]){
-    if(digitalRead(GEN_BTN_PINS[3]))
-      generalButtonPress(3);
-    else
-      generalButtonRelease(3);
-  }
+  // if (btn_change_ISR_flag[3]){
+  //   if(digitalRead(GEN_BTN_PINS[3]))
+  //     generalButtonPress(3);
+  //   else
+  //     generalButtonRelease(3);
+  // }
 
 
   ///////////////////
   //  BUTTON MODE CHANGES
   ///////////////////
-  // for(int i = 0; i < NUM_GEN_BTNS; i++){
-  //   if(!digitalRead(GEN_BTN_PINS[i])){
-  //     // Start timer if not already started
-  //     if(!btn_long_hold_start_times[i])
-  //       btn_long_hold_start_times[i] = millis();
-  //     else if ((millis() - btn_long_hold_start_times[i]) > MODE_CHANGE_DELAY){
-  //       switchBtnMode(i);
-  //       btn_long_hold_start_times[i] = 0;
-  //     }
-  //   }
-  //   else
-  //     btn_long_hold_start_times[i] = 0;
-  // }
+  for(int i = 0; i < NUM_GEN_BTNS; i++){
+    if(!digitalRead(GEN_BTN_PINS[i])){
+      // Start timer if not already started
+      if(!btn_long_hold_start_times[i])
+        btn_long_hold_start_times[i] = millis();
+      else if ((millis() - btn_long_hold_start_times[i]) > MODE_CHANGE_DELAY){
+        switchBtnMode(i);
+        btn_long_hold_start_times[i] = 0;
+      }
+    }
+    else
+      btn_long_hold_start_times[i] = 0;
+  }
 
   //  GENERAL BUTTONS
-  // for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
-  //   // Check for press (and debounce input)
-  //   if(digitalRead(GEN_BTN_PINS[btn]) != getBtnState(btn) && (millis() - btn_last_change_times[btn]) > DEBOUNCE_DELAY){
-  //     btn_last_change_times[btn] = millis();
-  //     setBtnState(btn, digitalRead(GEN_BTN_PINS[btn]));
+  for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
+    // Check for press (and debounce input)
+    if(digitalRead(GEN_BTN_PINS[btn]) != getBtnState(btn) && (millis() - btn_last_change_times[btn]) > DEBOUNCE_DELAY){
+      setBtnState(btn, digitalRead(GEN_BTN_PINS[btn]));
 
-  //     if(getBtnState(btn))
-  //       generalButtonRelease(btn);
-  //     else
-  //       generalButtonPress(btn);
-  //   } 
-  // }
+      if(getBtnState(btn))
+        generalButtonRelease(btn);
+      else
+        generalButtonPress(btn);
+    } 
+  }
 
   // PAGE UP BUTTON
-  // if(digitalRead(BTN_PAGE_UP_PIN) != btn_page_up_state && (millis() - btn_page_up_last_change_time) > DEBOUNCE_DELAY){
-  //   btn_page_up_last_change_time = millis();
-  //   btn_page_up_state = !btn_page_up_state;
-    
-  //   if(btn_page_up_state)
-      // pageUpButtonRelease();
-  //   else
-  //     pageUpButtonPress();
-  // }
+  if(digitalRead(BTN_PAGE_UP_PIN) != btn_page_up_state && (millis() - btn_page_up_last_change_time) > DEBOUNCE_DELAY*2){
+    btn_page_up_state = digitalRead(BTN_PAGE_UP_PIN);
+
+    if(!btn_page_up_state)
+      pageUpButtonPress();
+  }
 
   // EXPRESSION PEDAL
   exp_pedal_in = analogRead(EXP_PEDAL_PIN);
   if(exp_pedal_in != prev_exp_pedal_in && current_page != 2){
-    rollerChange(prev_exp_pedal_in - exp_pedal_in);
+    // rollerChange(prev_exp_pedal_in - exp_pedal_in);
     prev_exp_pedal_in = exp_pedal_in;
     // TODO Change to encoder
   }
@@ -562,6 +476,5 @@ void loop() {
   }
 
   refreshLEDs();
-  refreshLCD();
   delay(1);
 }
