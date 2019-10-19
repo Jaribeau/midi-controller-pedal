@@ -4,6 +4,7 @@
 #include <Wire.h> 
 #include <Adafruit_NeoPixel.h>
 #include <Mouse.h>
+#include <Encoder.h>
 
 
 // TODO:
@@ -95,6 +96,7 @@ bool btn_colours[NUM_BTNS_WITH_LEDS * NUM_PAGES];
 long btn_last_change_times[] = {0, 0, 0, 0, 0, 0, 0};
 long btn_long_hold_start_times[] = {0, 0, 0, 0, 0, 0, 0};
 bool btn_change_ISR_flag[] = {0, 0, 0, 0, 0, 0, 0};
+int roller_values[] = {0, 0, 0, 0, 0, 0, 0};
 
 bool btn_page_up_state = 0;
 long btn_page_up_last_change_time = 0;
@@ -103,6 +105,7 @@ int current_page = 1; // Midi channel used corresponds to current page. This ran
 
 int exp_pedal_in = 0;
 int prev_exp_pedal_in = 0;
+long oldPosition  = -999;
 
 // int selected_button = 0;
 
@@ -114,6 +117,7 @@ long mouse_delay = 100;
 
 // LED Setup
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ400);
+Encoder myEnc(3, 2);
 
 uint32_t GREENISHWHITE = strip.Color(0, 64, 0, 64);
 uint32_t RED = strip.Color(255, 1, 1);
@@ -319,10 +323,22 @@ void pageUpButtonPress(){
 }
 
 void rollerChange(int amount){
-  // TODO Change to encoder
-  // Send midi command OR mouse command
-  if(amount != 0)
-    controlChange(0, 0x0B, exp_pedal_in/4);
+  if(amount == 0 || 
+    (amount < 0 && roller_values[current_page] == 0) || 
+    (amount > 0 && roller_values[current_page] == 512))
+    return;
+
+  if(current_page != 3)
+    controlChange(0, 0x0B, roller_values[current_page]/4);
+  else{  
+    // MOUSE SCROLL WHEEL
+    if(millis() - mouse_delay_timer > mouse_delay && current_page == 2){
+      mouse_delay_timer = millis();
+      // Mouse.move(0,0, -(char)(amount/8));
+      // prev_scroller_in = exp_pedal_in/8;
+    }
+  }
+  
   // printToScreen(exp_pedal_in/4 *100/255);
   // if(exp_pedal_in/4*100/255 < 100) {printToScreen(" ");}
 }
@@ -461,19 +477,8 @@ void loop() {
   }
 
   // EXPRESSION PEDAL
-  exp_pedal_in = analogRead(EXP_PEDAL_PIN);
-  if(exp_pedal_in != prev_exp_pedal_in && current_page != 2){
-    // rollerChange(prev_exp_pedal_in - exp_pedal_in);
-    prev_exp_pedal_in = exp_pedal_in;
-    // TODO Change to encoder
-  }
-
-  // MOUSE SCROLL WHEEL
-  if(millis() - mouse_delay_timer > mouse_delay && current_page == 2){
-    mouse_delay_timer = millis();
-    // Mouse.move(0,0, -(char)(prev_scroller_in - exp_pedal_in/8));
-    prev_scroller_in = exp_pedal_in/8;
-  }
+  rollerChange(myEnc.read());
+  myEnc.write(0);
 
   refreshLEDs();
   delay(1);
