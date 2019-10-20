@@ -1,11 +1,37 @@
 # midi-controller-pedal
 A custom MIDI controller pedalboard to control a DAW, for fun!
 
+## TODO
+* Change button mode interaction
+    * Current: Hold button for 5 seconds.
+    * Desired: Hold config button (maybe press roller inwards), then press switch
+* Save roller states to EEPROM
+* Save current page to EEPROM
+* Add toggle switch for mouse? 
+* Set roller LED colours to match page colour
+
 ## Planned pedal layout
 * 4 footswitches: general purpose buttons
 * 1 footswitches: page cycle
 * 1 LED strip (10+ LEDS)
 * 3 general purpose knobs (?)
+
+## Pin Allocations
+```
+   0    
+   1    
+   2    Expression Pedal Pin A (uses interrupt)
+   3    Expression Pedal Pin B (uses interrupt)
+   4-9  Buttons 1-6
+   10   Button 7
+   16   Button 8
+   14   Button 9
+   15   Button 10
+   18   
+   19   LED Strip
+   20   
+   21   
+```
 
 ## LED Plans
 * 4x for footswitches

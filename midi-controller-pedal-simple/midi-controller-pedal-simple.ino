@@ -6,57 +6,18 @@
 #include <Mouse.h>
 #include <Encoder.h>
 
-
-// TODO:
-// Refactor to use buttonPress(), buttonRelease(), rollerChange() (only write debouncing once in the DI loop).
-// Add switch statement in buttonPress() that calls genBtnPress(), pageUp/DownPressed(), modePressed()
-
-// MIDI Mode
-  // changeMode(MIDI_MODE)
-  // btnPress()
-      // sendMIDI()
-      // IF togg: toggleLED()
-      // IF momentary: LED on until buttonRelease()
-  // rollerChange()
-      // Update roller state
-      // sendMIDI() 
-      // setLed / screen #
-      // OR scrollMouse()
-
-
-// - Expression pedal interface (page changes channel, LEDs inditicate direction to setpoint, changes apply after hitting setpoint)
-
 /*****************************************************/
-/*************** PROPOSED PEDAL LAYOUT ***************/
+/**********      ADJUSTABLE PARAMETERS       *********/
 /*****************************************************/
-/*
-   Pin Allocations
-   0    None (RX pin)
-   1    None (TX pin)
-   2    LCD Data
-   3    LCD Clock
-   4-9  Buttons 1-6
-   10   Button 7
-   16   Button 8
-   14   Button 9
-   15   Button 10
-   18   Expression Pedal Analog In
-   19   
-   20   LEDs
-   21   
-*/
+const int NUM_PAGES = 3;  // Must erase EEPROM once when changing this.
+const int EXP_PEDAL_SENSITIVITY = 2; // Linear factor.
+const long DEBOUNCE_DELAY = 100;
+const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
 
-//IDEA: page N = toggle/momentary config page, LEDs on each button color to indicate mode?
 
 /*****************************************************/
 /***************      CONSTANTS       ***************/
 /*****************************************************/
-const int EXP_PEDAL_SENSITIVITY = 2; // Linear factor.
-const int NUM_GEN_BTNS = 4;
-const long DEBOUNCE_DELAY = 100;
-const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
-const int NUM_PAGES = 3;
-
 int MIDI_CONTROL_NUMBERS[] = {0x0E,0x0F,0x10,0x11,
                               0x12,0x13,0x14,0x15,
                               0x16,0x17,0x18,0x19,
@@ -65,6 +26,7 @@ int MIDI_CONTROL_NUMBERS[] = {0x0E,0x0F,0x10,0x11,
 const bool ON = 1;
 const bool OFF = 0;
 
+const int NUM_GEN_BTNS = 4;
 const int LED_COUNT = 18;
 const int NUM_BTNS_WITH_LEDS = 11;
 const int NUM_LEDS_PER_BUTTON = 1;
@@ -80,11 +42,12 @@ const int NUM_LEDS_BTWEEN_BUTTONS = 0;
 // Led Index Map
 //    0   1   2   3   4
 //    11  10  9   8   7
-int GEN_BTN_PINS[] =    {4, 5, 6, 7};
-int BTN_LED_INDEXES[] = {0, 1, 2, 3, 4, 17};
+int GEN_BTN_PINS[] =    {9, 15, 14, 10};
+int BTN_LED_INDEXES[] = {11, 10, 9, 8, 7};
 int EXP_PEDAL_PIN = A0;
 int LED_PIN = 19;
-int BTN_PAGE_UP_PIN = 8;
+int BTN_PAGE_UP_PIN = 16;
+int EXP_PEDAL_LED_INDEX = 17;
 
 /*****************************************************/
 /***************    STATE VARIABLES    ***************/
@@ -93,21 +56,17 @@ bool btn_states[NUM_GEN_BTNS * NUM_PAGES];
 bool toggle_btn_states[NUM_GEN_BTNS * NUM_PAGES];
 bool btn_toggle_modes[NUM_GEN_BTNS * NUM_PAGES];
 bool btn_colours[NUM_BTNS_WITH_LEDS * NUM_PAGES];
-
-long btn_last_change_times[] = {0, 0, 0, 0, 0, 0, 0};
-long btn_long_hold_start_times[] = {0, 0, 0, 0, 0, 0, 0};
-bool btn_change_ISR_flag[] = {0, 0, 0, 0, 0, 0, 0};
-int roller_values[] = {0, 0, 0, 0, 0, 0, 0};
+long btn_last_change_times[NUM_GEN_BTNS];
+long btn_long_hold_start_times[NUM_GEN_BTNS];
+int roller_values[NUM_PAGES+1];
 
 bool btn_page_up_state = 0;
 long btn_page_up_last_change_time = 0;
 
-int current_page = 1; // Midi channel used corresponds to current page. This ranges from 1 to NUM_PAGES.
+int current_page = 0; // Midi channel used corresponds to current page. This ranges from 0 to NUM_PAGES-1.
 
 int exp_pedal_in = 0;
 int prev_exp_pedal_in = 0;
-
-// int selected_button = 0;
 
 //Mouse
 int prev_scroller_in = 0;
@@ -116,7 +75,7 @@ long mouse_delay = 100;
 
 
 // LED Setup
-Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ400);
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB);
 Encoder myEnc(3, 2);
 
 uint32_t GREENISHWHITE = strip.Color(0, 64, 0, 64);
@@ -236,8 +195,9 @@ void setBtnLEDs(int btn, uint32_t colour){
 
 void refreshLEDs(){
   setBtnLEDs(4, getButtonColour(4));  // Page button
-  int c = 10 + roller_values[current_page]*roller_values[current_page]/128;
-  setBtnLEDs(5, strip.Color(c,c,c));  // Roller indicator   R, B, G
+  int c = 5 + roller_values[current_page]*roller_values[current_page]/128;
+  strip.setPixelColor(EXP_PEDAL_LED_INDEX, strip.Color(c,c,c)); // Roller indicator   R, B, G
+
   for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
     if(isBtnInToggleMode(btn) && getToggBtnState(btn)){
       setBtnLEDs(btn, getButtonColour(btn));
@@ -256,7 +216,7 @@ void refreshLEDs(){
 }
 
 int getButtonColour(int button){
-  return PAGE_COLOURS[current_page-1];
+  return PAGE_COLOURS[current_page];
   // return COLOUR_CHOOSER_COLOURS[btn_colours[button + (NUM_BTNS_WITH_LEDS * current_page)]];
 }
 
@@ -269,82 +229,61 @@ bool isBtnInToggleMode(int button){
   return btn_toggle_modes[button + (NUM_GEN_BTNS * current_page)];
 }
 
-//
-// ISR Functions
-//
-bool page_up_btton_press_ISR_flag = false;
-void pageUpButtonPressISR(){  if(millis() - btn_page_up_last_change_time > DEBOUNCE_DELAY){  page_up_btton_press_ISR_flag = true;}}
-
-void generalButtonChangeISR0(){  if(millis() - btn_last_change_times[0] > DEBOUNCE_DELAY){ btn_change_ISR_flag[0] = true;}}
-
-void generalButtonChangeISR3(){  
-  // if(millis() - btn_last_change_times[3] > DEBOUNCE_DELAY)
-  // { 
-    btn_change_ISR_flag[3] = true;
-  // }
-}
-
 
 /*******************************************************/
 /***************  INPUT TRIGGER FUNCTIONS  ***************/
 /*******************************************************/
 
 void generalButtonPress(int btn){
-  btn_change_ISR_flag[btn] = false;
   btn_last_change_times[btn] = millis();
 
   // Publish Midi message
   if(!isBtnInToggleMode(btn)){
-    controlChange(current_page, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)!getBtnState(btn)*127); // Control change on or off
+    controlChange(current_page+1, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)!getBtnState(btn)*127); // Control change on or off
   }
   else {
     setToggBtnState(btn, !getToggBtnState(btn));
-    controlChange(current_page, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)getToggBtnState(btn)*127);
+    controlChange(current_page+1, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)getToggBtnState(btn)*127);
   }
 }
 
 
 void generalButtonRelease(int btn){
-  btn_change_ISR_flag[btn] = false;
   btn_last_change_times[btn] = millis();
 
   if(!isBtnInToggleMode(btn)){
-    controlChange(current_page, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)(!getBtnState(btn)*127)); // Control change on or off
+    controlChange(current_page+1, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)(!getBtnState(btn)*127)); // Control change on or off
   }
 }
 
 void pageUpButtonPress(){    
     btn_page_up_state = true;
-    page_up_btton_press_ISR_flag = false;
     btn_page_up_last_change_time = millis();
-
-    if(current_page == NUM_PAGES)
-      current_page = 1;
+    myEnc.write(0);
+    if(current_page == NUM_PAGES-1)
+      current_page = 0;
     else
       current_page++;
 }
 
 void rollerChange(int amount){
   if(amount == 0 || 
-    (amount < 0 && roller_values[current_page] == 0) || 
-    (amount > 0 && roller_values[current_page] == 128))
+    (roller_values[current_page] + amount * EXP_PEDAL_SENSITIVITY < 0 ) || 
+    (roller_values[current_page] + amount * EXP_PEDAL_SENSITIVITY > 128 ))
     return;
 
   roller_values[current_page]+= amount * EXP_PEDAL_SENSITIVITY;
 
-  if(current_page != 3)
-    controlChange(0, 0x0B, roller_values[current_page]);
+  if(current_page != 4)
+    controlChange(current_page+1, 0x0B, roller_values[current_page]);
   else{  
     // MOUSE SCROLL WHEEL
-    if(millis() - mouse_delay_timer > mouse_delay && current_page == 2){
+    if(millis() - mouse_delay_timer > mouse_delay){
       mouse_delay_timer = millis();
       // Mouse.move(0,0, -(char)(amount/8));
       // prev_scroller_in = exp_pedal_in/8;
     }
   }
-  
-  // printToScreen(exp_pedal_in/4 *100/255);
-  // if(exp_pedal_in/4*100/255 < 100) {printToScreen(" ");}
 }
 
 
@@ -416,13 +355,6 @@ void setup() {
   strip.setBrightness(64);
   strip.show(); // Initialize all pixels to 'off'
 
-  // Attach interrupt service routines (ISRs)
-  // attachInterrupt(digitalPinToInterrupt(BTN_PAGE_UP_PIN), pageUpButtonPressISR, RISING);
-  // attachInterrupt(digitalPinToInterrupt(GEN_BTN_PINS[0]), generalButtonPressISR0, RISING);
-  // attachInterrupt(digitalPinToInterrupt(GEN_BTN_PINS[0]), generalButtonReleaseISR0, FALLING);
-
-  // attachInterrupt(digitalPinToInterrupt(GEN_BTN_PINS[3]), generalButtonChangeISR3, CHANGE);
-
   // Setup Mouse Scroll Control
   Mouse.begin();
 }
@@ -430,19 +362,6 @@ void setup() {
 
 
 void loop() {
-  // Check ISR flags
-  // if (page_up_btton_press_ISR_flag){pageUpButtonPress();}
-  // if (btn_change_ISR_flag[0]){generalButtonPress(0);}
-  // if (btn_release_ISR_flag[0]){generalButtonRelease(0);}
-
-  // if (btn_change_ISR_flag[3]){
-  //   if(digitalRead(GEN_BTN_PINS[3]))
-  //     generalButtonPress(3);
-  //   else
-  //     generalButtonRelease(3);
-  // }
-
-
   ///////////////////
   //  BUTTON MODE CHANGES
   ///////////////////
@@ -486,5 +405,5 @@ void loop() {
   myEnc.write(0);
 
   refreshLEDs();
-  delay(1);
+  delay(10);
 }
