@@ -27,8 +27,8 @@ const bool ON = 1;
 const bool OFF = 0;
 
 const int NUM_GEN_BTNS = 4;
-const int LED_COUNT = 18;
-const int NUM_BTNS_WITH_LEDS = 11;
+const int LED_COUNT = 6;
+const int NUM_BTNS_WITH_LEDS = 5;
 const int NUM_LEDS_PER_BUTTON = 1;
 const int NUM_LEDS_BTWEEN_BUTTONS = 0;
 
@@ -36,18 +36,21 @@ const int NUM_LEDS_BTWEEN_BUTTONS = 0;
 /*****************************************************/
 /***************    PIN ASSIGNMENTS    ***************/
 /*****************************************************/
-// Button/Pin Map
-//    4   5   6   7   8
-//    9   15  14  10  16
 // Led Index Map
 //    0   1   2   3   4
-//    11  10  9   8   7
-int GEN_BTN_PINS[] =    {9, 15, 14, 10};
-int BTN_LED_INDEXES[] = {11, 10, 9, 8, 7};
-int EXP_PEDAL_PIN = A0;
-int LED_PIN = 19;
-int BTN_PAGE_UP_PIN = 16;
-int EXP_PEDAL_LED_INDEX = 17;
+int LED_PIN = 5;
+int BTN_LED_INDEXES[] = {1, 2, 3, 4};
+int PAGE_BTN_INDEX = 0;
+int EXP_PEDAL_LED_INDEX = 5;
+
+// Button/Pin Map
+//    4   5   6   7   8
+int GEN_BTN_PINS[] = {10, 16, 14, 15};
+int BTN_PAGE_UP_PIN = A0;
+int BTN_EXP_PEDAL_PIN = 4;
+int GND_PIN_PULL_DOWN = 9;
+int ENCODER_PIN_A = 3;
+int ENCODER_PIN_B = 2;
 
 /*****************************************************/
 /***************    STATE VARIABLES    ***************/
@@ -75,8 +78,8 @@ long mouse_delay = 100;
 
 
 // LED Setup
-Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB);
-Encoder myEnc(3, 2);
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN);
+Encoder myEnc(ENCODER_PIN_A, ENCODER_PIN_B);
 
 uint32_t GREENISHWHITE = strip.Color(0, 64, 0, 64);
 uint32_t RED = strip.Color(255, 1, 1);
@@ -189,14 +192,19 @@ void setBtnState(int button, bool state){
 /*******************************************************/
 
 void setBtnLEDs(int btn, uint32_t colour){
-  // Button oder: Gen buttons, page Up, page Down, mode, roller
+  // Button oder: Page change, Gen buttons, roller
   strip.setPixelColor(BTN_LED_INDEXES[btn], colour);
 }
 
 void refreshLEDs(){
-  setBtnLEDs(4, getButtonColour(4));  // Page button
+  // Set Page Button LED
+  strip.setPixelColor(PAGE_BTN_INDEX, getButtonColour(0));
+
+  // Set Page Button LED
   int c = 5 + roller_values[current_page]*roller_values[current_page]/128;
-  strip.setPixelColor(EXP_PEDAL_LED_INDEX, strip.Color(c,c,c)); // Roller indicator   R, B, G
+
+  // Roller indicator   R, B, G
+  strip.setPixelColor(EXP_PEDAL_LED_INDEX, strip.Color(c,c,c)); 
 
   for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
     if(isBtnInToggleMode(btn) && getToggBtnState(btn)){
@@ -344,6 +352,8 @@ void setup() {
   Serial.begin(115200);
 
   // Setup pins
+  pinMode(GND_PIN_PULL_DOWN, OUTPUT);
+  digitalWrite(GND_PIN_PULL_DOWN, LOW);
   pinMode(BTN_PAGE_UP_PIN, INPUT_PULLUP);
   for(int i = 0; i < NUM_GEN_BTNS; i++){
     pinMode(GEN_BTN_PINS[i], INPUT_PULLUP);
@@ -356,7 +366,7 @@ void setup() {
   strip.show(); // Initialize all pixels to 'off'
 
   // Setup Mouse Scroll Control
-  Mouse.begin();
+  // Mouse.begin();
 }
 
 
