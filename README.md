@@ -17,23 +17,10 @@ A custom MIDI controller pedalboard to control a DAW, for fun!
 * 3 general purpose knobs (?)
 
 ## Pin Allocations
-```
-   0    
-   1    
-   2    Expression Pedal Pin A (uses interrupt)
-   3    Expression Pedal Pin B (uses interrupt)
-   4-9  Buttons 1-6
-   10   Button 7
-   16   Button 8
-   14   Button 9
-   15   Button 10
-   18   
-   19   LED Strip
-   20   
-   21   
-```
+See PIN ASSIGNMENTS in `midi-controller-pedal-simple.ino`  
 
 ## LED Plans
+* 1x for page indicator
 * 4x for footswitches
 * 1 for roller position
 
