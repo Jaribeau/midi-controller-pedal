@@ -1,28 +1,44 @@
 # midi-controller-pedal
 A custom MIDI controller pedalboard to control a DAW, for fun!
 
+## TODO
+* Change button mode interaction
+    * Current: Hold button for 5 seconds.
+    * Desired: Hold config button (maybe press roller inwards), then press switch
+* Save roller states to EEPROM
+* Save current page to EEPROM
+* Add toggle switch for mouse? 
+* Set roller LED colours to match page colour
+
 ## Planned pedal layout
-* 6 footswitches: general purpose buttons
-* 2 footswitches: page up/down
-* 1 footswitch: mode change (set LEDs, set toggle/momentary)
-* 1 footswitch: ??? (maybe leave it out to make space for LCD?)
-* 1 LCD readout (show page number, mode)
+* 4 footswitches: general purpose buttons
+* 1 footswitches: page cycle
 * 1 LED strip (10+ LEDS)
 * 3 general purpose knobs (?)
 
-## LED Plans
-* 8x for footswitches
-* 1 for BPM? (Can this info be received from Ableton?)
-* 1 for 
-* Roller position?
+## Pin Allocations
+```
+   0    
+   1    
+   2    Expression Pedal Pin A (uses interrupt)
+   3    Expression Pedal Pin B (uses interrupt)
+   4-9  Buttons 1-6
+   10   Button 7
+   16   Button 8
+   14   Button 9
+   15   Button 10
+   18   
+   19   LED Strip
+   20   
+   21   
+```
 
-## Functions / LCD Info
-* Current bank page/name
-* Roller position?
-* Configure toggle/momentary
-* Configure LED colours
-* Rename each page?
-* "Assign tap tempo pin"?
+## LED Plans
+* 4x for footswitches
+* 1 for roller position
+
+## Configure Pins
+* Long button hold (10s) changes pin between toggle and momentary mode
 
 ## Momentary vs Toggle Buttons
 The physical buttons on the controller are momentary swtiches; however, for some uses of midi control messages a toggle is required (i.e. activating/deactivating an effects processor). To switch the configuration of one of the general purpose switches, hold the switch for ~7 seconds (TODO: Add feedback via LCD and LEDs). The configuration will persist even after power is disconnected.  
