@@ -6,11 +6,16 @@
 #include <Mouse.h>
 #include <Encoder.h>
 
+// TODO:
+// - Fix roller offset
+// - Debounce page button
+// - Change roller color to match page
+
 /*****************************************************/
 /**********      ADJUSTABLE PARAMETERS       *********/
 /*****************************************************/
 const int NUM_PAGES = 3;  // Must erase EEPROM once when changing this.
-const int EXP_PEDAL_SENSITIVITY = 2; // Linear factor.
+const int EXP_PEDAL_SENSITIVITY = 1; // Linear factor.
 const long DEBOUNCE_DELAY = 5;
 const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
 
@@ -96,17 +101,17 @@ uint32_t COLOUR_CHOOSER_COLOURS[] = {GREENISHWHITE,
                                   PURPLE};
 
 // uint32_t RED_H = strip.gamma32(strip.ColorHSV(35000));
-uint32_t TURQOISE_H = strip.gamma32(strip.ColorHSV(38000));
-uint32_t PURPLE_H = strip.gamma32(strip.ColorHSV(20000));
-uint32_t BLUE_H = strip.gamma32(strip.ColorHSV(5000));
+uint32_t TURQOISE_H = 38000;
+uint32_t PURPLE_H = 20000;
+uint32_t BLUE_H = 5000;
 uint32_t WHITE_H = strip.ColorHSV(50000);
 uint32_t GREEN_H = strip.gamma32(strip.ColorHSV(60000));
-uint32_t PAGE_COLOURS[] = {       TURQOISE_H,
-                                  PURPLE_H,
-                                  BLUE_H};
+uint32_t PAGE_HUES[] = {  TURQOISE_H,
+                          PURPLE_H,
+                          BLUE_H};
 int NUM_COLOUR_OPTIONS = 6;
 int currentColourChooserIndex = 0;
-int brightness = 20; //0 - 255
+int brightness = 10; //0 - 255
 
 //
 // EEPROM (nonvolatile) settings
@@ -201,10 +206,10 @@ void refreshLEDs(){
   strip.setPixelColor(PAGE_BTN_INDEX, getButtonColour(0));
 
   // Set Page Button LED
-  int c = 5 + roller_values[current_page]*roller_values[current_page]/128;
+  int c = 20 + roller_values[current_page] * 1.5;  // From 0-127, down to 0-25
 
   // Roller indicator   R, B, G
-  strip.setPixelColor(EXP_PEDAL_LED_INDEX, strip.Color(c,c,c)); 
+  strip.setPixelColor(EXP_PEDAL_LED_INDEX, strip.Color(c, c, c)); 
 
   for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
     if(isBtnInToggleMode(btn) && getToggBtnState(btn)){
@@ -224,8 +229,7 @@ void refreshLEDs(){
 }
 
 int getButtonColour(int button){
-  return PAGE_COLOURS[current_page];
-  // return COLOUR_CHOOSER_COLOURS[btn_colours[button + (NUM_BTNS_WITH_LEDS * current_page)]];
+  return strip.gamma32(strip.ColorHSV(PAGE_HUES[current_page],255,255)) ;
 }
 
 void saveButtonColour(int button, int colour){
