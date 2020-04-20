@@ -6,9 +6,6 @@
 #include <Mouse.h>
 #include <Encoder.h>
 
-// TODO:
-// - Use encoder button to trigger mode changes
-
 /*****************************************************/
 /**********      ADJUSTABLE PARAMETERS       *********/
 /*****************************************************/
@@ -99,14 +96,15 @@ uint32_t COLOUR_CHOOSER_COLOURS[] = {GREENISHWHITE,
                                   PURPLE};
 
 // uint32_t RED_H = strip.gamma32(strip.ColorHSV(35000));
-uint32_t TURQOISE_H = 38000;
-uint32_t PURPLE_H = 20000;
-uint32_t BLUE_H = 5000;
+uint32_t TURQOISE_H = 36000;
+uint32_t PURPLE_H = 27464;
+uint32_t BLUE_H = 8348;
+uint32_t PINK_H = 9488;
 uint32_t WHITE_H = strip.ColorHSV(50000);
-uint32_t GREEN_H = strip.gamma32(strip.ColorHSV(60000));
+uint32_t GREEN_H = 56288;
 uint32_t PAGE_HUES[] = {  TURQOISE_H,
                           PURPLE_H,
-                          BLUE_H};
+                          GREEN_H};
 int NUM_COLOUR_OPTIONS = 6;
 int currentColourChooserIndex = 0;
 int brightness = 10; //0 - 255
@@ -282,11 +280,12 @@ void pageUpButtonRelease(){
 }
 
 void rollerChange(int amount){
-  if(current_page != NUM_PAGES-1){
+  if(amount == 0)
+    return;
+  else if(current_page != NUM_PAGES-1){
     // Limit to max and min values
-    if(amount == 0 || 
-    (roller_values[current_page] + amount * EXP_PEDAL_SENSITIVITY < 0 ) || 
-    (roller_values[current_page] + amount * EXP_PEDAL_SENSITIVITY > 128 ))
+    if((roller_values[current_page] + amount * EXP_PEDAL_SENSITIVITY < 0 ) || 
+      (roller_values[current_page] + amount * EXP_PEDAL_SENSITIVITY > 128 ))
     return;
 
     // Update roller values and publish MIDI control change
@@ -295,10 +294,7 @@ void rollerChange(int amount){
   }
   else{  
     // MOUSE SCROLL WHEEL
-    // if(millis() - mouse_delay_timer > mouse_delay){
-    //   mouse_delay_timer = millis();
-      Mouse.move(0,0, (char)(amount * mouse_sensitivity));
-    // }
+    Mouse.move(0,0, (char)(amount * mouse_sensitivity));
   }
 }
 
@@ -369,6 +365,7 @@ void setup() {
   pinMode(GND_PIN_PULL_DOWN, OUTPUT);
   digitalWrite(GND_PIN_PULL_DOWN, LOW);
   pinMode(BTN_PAGE_UP_PIN, INPUT_PULLUP);
+  pinMode(BTN_EXP_PEDAL_PIN, INPUT_PULLUP);
   for(int i = 0; i < NUM_GEN_BTNS; i++){
     pinMode(GEN_BTN_PINS[i], INPUT_PULLUP);
   }
@@ -388,21 +385,17 @@ void setup() {
 
 
 void loop() {
-  ///////////////////
   //  BUTTON MODE CHANGES
-  ///////////////////
-  for(int i = 0; i < NUM_GEN_BTNS; i++){
-    if(!digitalRead(GEN_BTN_PINS[i])){
-      // Start timer if not already started
-      if(!btn_long_hold_start_times[i])
-        btn_long_hold_start_times[i] = millis();
-      else if ((millis() - btn_long_hold_start_times[i]) > MODE_CHANGE_DELAY){
-        switchBtnMode(i);
-        btn_long_hold_start_times[i] = 0;
+  if(!digitalRead(BTN_EXP_PEDAL_PIN)){
+    for(int btn = 0; btn < NUM_GEN_BTNS; btn++){
+      if(digitalRead(GEN_BTN_PINS[btn]) != getBtnState(btn) && (millis() - btn_last_change_times[btn]) > DEBOUNCE_DELAY){
+        setBtnState(btn, digitalRead(GEN_BTN_PINS[btn]));
+        
+        // Only change button mode on press (not release)
+        if(getBtnState(btn))
+          switchBtnMode(btn);
       }
     }
-    else
-      btn_long_hold_start_times[i] = 0;
   }
 
   //  GENERAL BUTTONS
