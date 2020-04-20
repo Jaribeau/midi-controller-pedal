@@ -7,16 +7,14 @@
 #include <Encoder.h>
 
 // TODO:
-// - Fix roller offset
-// - Debounce page button
-// - Change roller color to match page
+// - Use encoder button to trigger mode changes
 
 /*****************************************************/
 /**********      ADJUSTABLE PARAMETERS       *********/
 /*****************************************************/
 const int NUM_PAGES = 3;  // Must erase EEPROM once when changing this.
 const int EXP_PEDAL_SENSITIVITY = 1; // Linear factor.
-const long DEBOUNCE_DELAY = 5;
+const long DEBOUNCE_DELAY = 10;
 const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
 
 
@@ -269,13 +267,18 @@ void generalButtonRelease(int btn){
 }
 
 void pageUpButtonPress(){    
-    btn_page_up_state = true;
+    btn_page_up_state = false;
     btn_page_up_last_change_time = millis();
     myEnc.write(0);
     if(current_page == NUM_PAGES-1)
       current_page = 0;
     else
       current_page++;
+}
+
+void pageUpButtonRelease(){
+    btn_page_up_state = true;
+    btn_page_up_last_change_time = millis();
 }
 
 void rollerChange(int amount){
@@ -417,10 +420,10 @@ void loop() {
 
   // PAGE UP BUTTON
   if(digitalRead(BTN_PAGE_UP_PIN) != btn_page_up_state && (millis() - btn_page_up_last_change_time) > DEBOUNCE_DELAY*2){
-    btn_page_up_state = digitalRead(BTN_PAGE_UP_PIN);
-
-    if(!btn_page_up_state)
+    if(btn_page_up_state && !digitalRead(BTN_PAGE_UP_PIN))
       pageUpButtonPress();
+    else if(!btn_page_up_state && digitalRead(BTN_PAGE_UP_PIN))
+      pageUpButtonRelease();
   }
 
   // EXPRESSION PEDAL
