@@ -11,7 +11,7 @@
 /*****************************************************/
 const int NUM_PAGES = 3;  // Must erase EEPROM once when changing this.
 const int EXP_PEDAL_SENSITIVITY = 2; // Linear factor.
-const long DEBOUNCE_DELAY = 100;
+const long DEBOUNCE_DELAY = 5;
 const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
 
 
@@ -72,9 +72,9 @@ int exp_pedal_in = 0;
 int prev_exp_pedal_in = 0;
 
 //Mouse
-int prev_scroller_in = 0;
 long mouse_delay_timer = 0;
 long mouse_delay = 100;
+int mouse_sensitivity = 1; // Inverse
 
 
 // LED Setup
@@ -106,7 +106,7 @@ uint32_t PAGE_COLOURS[] = {       TURQOISE_H,
                                   BLUE_H};
 int NUM_COLOUR_OPTIONS = 6;
 int currentColourChooserIndex = 0;
-int brightness = 125; //0 - 255
+int brightness = 20; //0 - 255
 
 //
 // EEPROM (nonvolatile) settings
@@ -275,22 +275,23 @@ void pageUpButtonPress(){
 }
 
 void rollerChange(int amount){
-  if(amount == 0 || 
+  if(current_page != NUM_PAGES-1){
+    // Limit to max and min values
+    if(amount == 0 || 
     (roller_values[current_page] + amount * EXP_PEDAL_SENSITIVITY < 0 ) || 
     (roller_values[current_page] + amount * EXP_PEDAL_SENSITIVITY > 128 ))
     return;
 
-  roller_values[current_page]+= amount * EXP_PEDAL_SENSITIVITY;
-
-  if(current_page != 4)
+    // Update roller values and publish MIDI control change
+    roller_values[current_page]+= amount * EXP_PEDAL_SENSITIVITY;
     controlChange(current_page+1, 0x0B, roller_values[current_page]);
+  }
   else{  
     // MOUSE SCROLL WHEEL
-    if(millis() - mouse_delay_timer > mouse_delay){
-      mouse_delay_timer = millis();
-      // Mouse.move(0,0, -(char)(amount/8));
-      // prev_scroller_in = exp_pedal_in/8;
-    }
+    // if(millis() - mouse_delay_timer > mouse_delay){
+    //   mouse_delay_timer = millis();
+      Mouse.move(0,0, (char)(amount * mouse_sensitivity));
+    // }
   }
 }
 
@@ -346,10 +347,16 @@ void setup() {
     else
       toggle_btn_states[i] = EEPROM.read(btn_tog_state_addr[i]);
   }
+
+  // Roller values
+  for(int i = 0; i < NUM_PAGES; i++){
+    roller_values[i] = 0;
+  }
   
 
   // Setup MIDI over USB serial
-  Serial.begin(115200);
+  // Serial.begin(115200);
+  Serial.begin(9600);
 
   // Setup pins
   pinMode(GND_PIN_PULL_DOWN, OUTPUT);
@@ -362,11 +369,13 @@ void setup() {
   // Setup NeoPixel strip
   strip.begin();
   // strip.fill(GREEN, 0, 18);
-  strip.setBrightness(64);
+  strip.setBrightness(brightness);
   strip.show(); // Initialize all pixels to 'off'
 
+  myEnc.write(0);
+
   // Setup Mouse Scroll Control
-  // Mouse.begin();
+  Mouse.begin();
 }
 
 
@@ -415,5 +424,4 @@ void loop() {
   myEnc.write(0);
 
   refreshLEDs();
-  delay(10);
 }
