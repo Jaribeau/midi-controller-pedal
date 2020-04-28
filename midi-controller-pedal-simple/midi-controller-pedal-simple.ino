@@ -12,8 +12,6 @@
 const int NUM_PAGES = 3;  // Must erase EEPROM once when changing this.
 const int EXP_PEDAL_SENSITIVITY = 1; // Linear factor.
 const long DEBOUNCE_DELAY = 10;
-const long MODE_CHANGE_DELAY = 5000; // Must hold button for 5 seconds to switch between momentary and toggle mode
-
 
 /*****************************************************/
 /***************      CONSTANTS       ***************/
@@ -72,8 +70,6 @@ int exp_pedal_in = 0;
 int prev_exp_pedal_in = 0;
 
 //Mouse
-long mouse_delay_timer = 0;
-long mouse_delay = 100;
 int mouse_sensitivity = 1; // Inverse
 
 
@@ -113,7 +109,6 @@ int brightness = 10; //0 - 255
 // EEPROM (nonvolatile) settings
 //
 int btn_mode_addr[NUM_GEN_BTNS * NUM_PAGES];
-int btn_colour_addr[NUM_BTNS_WITH_LEDS * NUM_PAGES];
 int btn_tog_state_addr[NUM_GEN_BTNS * NUM_PAGES];
 
 
@@ -228,11 +223,6 @@ int getButtonColour(int button){
   return strip.gamma32(strip.ColorHSV(PAGE_HUES[current_page],255,255)) ;
 }
 
-void saveButtonColour(int button, int colour){
-  btn_colours[button + (NUM_BTNS_WITH_LEDS * current_page)] = colour;
-  EEPROM.write(btn_colour_addr[button + (NUM_BTNS_WITH_LEDS * current_page)], colour);
-}
-
 bool isBtnInToggleMode(int button){
   return btn_toggle_modes[button + (NUM_GEN_BTNS * current_page)];
 }
@@ -254,7 +244,6 @@ void generalButtonPress(int btn){
     controlChange(current_page+1, MIDI_CONTROL_NUMBERS[current_page*NUM_GEN_BTNS + btn], (int)getToggBtnState(btn)*127);
   }
 }
-
 
 void generalButtonRelease(int btn){
   btn_last_change_times[btn] = millis();
@@ -325,21 +314,8 @@ void setup() {
       btn_toggle_modes[i] = EEPROM.read(btn_mode_addr[i]);
   }
 
-  // Button Colours
-  int mem_btn_colour_start = mem_btn_mode_start + mem_btn_mode_size;
-  int mem_btn_colour_size = NUM_BTNS_WITH_LEDS * NUM_PAGES;
-  for(int i = 0; i < mem_btn_colour_size; i++){
-    btn_colour_addr[i] = i + mem_btn_colour_start;
-
-    // Initialize values to 0 if they have never been written
-    if(EEPROM.read(btn_colour_addr[i]) >= NUM_COLOUR_OPTIONS)
-      EEPROM.write(btn_colour_addr[i], 0);
-    else
-      btn_colours[i] = EEPROM.read(btn_colour_addr[i]);
-  }
-
   // Gen Button States
-  int mem_tog_btn_state_start = mem_btn_colour_start+mem_btn_colour_size;
+  int mem_tog_btn_state_start = mem_btn_mode_start+mem_btn_mode_size;
   int mem_tog_btn_state_size = NUM_GEN_BTNS * NUM_PAGES;
   for(int i = 0; i < mem_tog_btn_state_size; i++){
     btn_tog_state_addr[i] = i + mem_tog_btn_state_start;
@@ -355,11 +331,11 @@ void setup() {
   for(int i = 0; i < NUM_PAGES; i++){
     roller_values[i] = 0;
   }
-  
+  myEnc.write(0);
 
   // Setup MIDI over USB serial
-  // Serial.begin(115200);
-  Serial.begin(9600);
+  Serial.begin(115200);
+  // Serial.begin(9600);
 
   // Setup pins
   pinMode(GND_PIN_PULL_DOWN, OUTPUT);
@@ -372,11 +348,8 @@ void setup() {
   
   // Setup NeoPixel strip
   strip.begin();
-  // strip.fill(GREEN, 0, 18);
   strip.setBrightness(brightness);
   strip.show(); // Initialize all pixels to 'off'
-
-  myEnc.write(0);
 
   // Setup Mouse Scroll Control
   Mouse.begin();
